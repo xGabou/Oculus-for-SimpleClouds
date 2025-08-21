@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.Gabou.oculus_for_simpleclouds.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "oculus_for_simpleclouds.refmap.json",
+  "mixins": [
+
+  ],
+  "client": [
+    "CommonUniformsMixin",
+    "IrisExclusiveUniformsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
