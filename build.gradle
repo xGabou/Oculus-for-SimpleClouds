@@ -140,6 +140,11 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    maven { url = "https://api.modrinth.com/maven" }
+    maven {
+        name "nonamecrackers2Maven"
+        url "https://maven.nonamecrackers2.dev/releases"
+    }
     // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html#sub:flat_dir_resolver
     // flatDir {
@@ -156,6 +161,10 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     implementation fg.deobf("curse.maven:oculus-581495:6020952")
     implementation fg.deobf("curse.maven:rubidium-574856:4952685")
+    implementation fg.deobf("nonamecrackers2:simpleclouds:0.7.2+1.20.1-forge")
+    implementation fg.deobf("nonamecrackers2:crackerslib-forge:${crackerslib_version}")
+    implementation fg.deobf("nonamecrackers2:simplecloudsapi-forge:${api_version}")
+
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly fg.deobf("mezz.jei:jei-${mc_version}-common-api:${jei_version}")
