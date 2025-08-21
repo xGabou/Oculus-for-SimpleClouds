@@ -33,12 +33,16 @@ import org.slf4j.Logger;
 @Mod(Oculus_for_simpleclouds.MODID)
 public class Oculus_for_simpleclouds {
 
+    public static boolean overWriteLogic = false;
+
     // Define mod id in a common place for everything to reference
     public static final String MODID = "oculus_for_simpleclouds";
     // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public Oculus_for_simpleclouds() {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+        if(!overWriteLogic) {
+            SimpleCloudsIrisWeatherCompat.init();
+        }
     }
 }
