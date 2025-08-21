@@ -27,6 +27,7 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
+import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.slf4j.Logger;
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -40,9 +41,14 @@ public class Oculus_for_simpleclouds {
     // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public Oculus_for_simpleclouds() {
-        if(!overWriteLogic) {
-            SimpleCloudsIrisWeatherCompat.init();
+    public Oculus_for_simpleclouds(FMLJavaModLoadingContext context) {
+
+        context.getModEventBus().addListener(this::clientInit);
+
+    }
+    private void clientInit(FMLClientSetupEvent event) {
+        if (CompatHelper.isOculusLoaded() && !overWriteLogic) {
+            event.enqueueWork(SimpleCloudsIrisWeatherCompat::init);
         }
     }
 }
