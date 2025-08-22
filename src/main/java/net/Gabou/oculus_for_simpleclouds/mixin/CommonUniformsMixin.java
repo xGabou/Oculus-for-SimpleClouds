@@ -32,37 +32,37 @@ public abstract class CommonUniformsMixin {
         cir.setReturnValue(strength);
     }
 
-    @Inject(method = "getThunderStrength", at = @At("HEAD"), cancellable = true)
-    private static void pa$overrideThunderStrength(CallbackInfoReturnable<Float> cir) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == null) {
-            cir.setReturnValue(0.0F);
-            return;
-        }
-
-        float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
-        float strength = Mth.clamp(
-                IrisWeatherApi.getThunderStrength(client.level, tickDelta),
-                0.0F, 1.0F
-        );
-
-        cir.setReturnValue(strength);
-    }
-
-    @Inject(method = "getSkyDarken", at = @At("HEAD"), cancellable = true)
-    private static void pa$overrideSkyDarken(CallbackInfoReturnable<Float> cir) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.level == null) {
-            cir.setReturnValue(0.0F);
-            return;
-        }
-
-        float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
-        float strength = Mth.clamp(
-                IrisWeatherApi.getSkyDarken(client.level, tickDelta),
-                0.0F, 1.0F
-        );
-
-        cir.setReturnValue(strength);
-    }
+//    @Inject(method = "getThunderStrength", at = @At("HEAD"), cancellable = true)
+//    private static void pa$overrideThunderStrength(CallbackInfoReturnable<Float> cir) {
+//        Minecraft client = Minecraft.getInstance();
+//        if (client.level == null) {
+//            cir.setReturnValue(0.0F);
+//            return;
+//        }
+//
+//        float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
+//        float strength = Mth.clamp(
+//                IrisWeatherApi.getThunderStrength(client.level, tickDelta),
+//                0.0F, 1.0F
+//        );
+//
+//        cir.setReturnValue(strength);
+//    }
+//
+//    @Inject(method = "getSkyDarken", at = @At("HEAD"), cancellable = true)
+//    private static void pa$overrideSkyDarken(CallbackInfoReturnable<Float> cir) {
+//        Minecraft client = Minecraft.getInstance();
+//        if (client.level == null) {
+//            cir.setReturnValue(0.0F);
+//            return;
+//        }
+//
+//        float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
+//        float strength = Mth.clamp(
+//                IrisWeatherApi.getSkyDarken(client.level, tickDelta),
+//                0.0F, 1.0F
+//        );
+//
+//        cir.setReturnValue(strength);
+//    }
 }
