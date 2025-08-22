@@ -4,6 +4,7 @@ import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.common.world.CloudManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 
@@ -40,6 +41,14 @@ public final class SimpleCloudsIrisWeatherCompat {
                         .map(SimpleCloudsRenderer::getWorldEffectsManager)
                         .map(effects -> effects.getStorminessSmoothed(tickDelta))
                         .orElse(level.getThunderLevel(tickDelta));
+            }
+
+            @Override
+            public float getSkyDarken(ClientLevel level, float tickDelta) {
+                return SimpleCloudsRenderer.getOptionalInstance()
+                        .map(SimpleCloudsRenderer::getWorldEffectsManager)
+                        .map(effects -> Mth.clamp(effects.getStorminessSmoothed(tickDelta), 0.0F, 1.0F))
+                        .orElse(level.getSkyDarken(tickDelta));
             }
         });
     }

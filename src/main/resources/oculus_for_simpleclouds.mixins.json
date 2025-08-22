@@ -8,8 +8,7 @@
 
   ],
   "client": [
-    "CommonUniformsMixin",
-    "IrisExclusiveUniformsMixin"
+    "CommonUniformsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

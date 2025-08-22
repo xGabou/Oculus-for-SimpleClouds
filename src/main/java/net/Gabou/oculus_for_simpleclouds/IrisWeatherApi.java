@@ -4,7 +4,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import java.util.Objects;
 
 /**
- * Allows other mods to override the rain and thunder strengths used by Iris shader uniforms.
+ * Allows other mods to override the rain, thunder and sky darken strengths used by Iris shader uniforms.
  *
  * <p>Mods providing localized weather effects should implement {@link Provider} and register it via
  * {@link #setProvider(Provider)} during initialization. For example:</p>
@@ -18,12 +18,16 @@ import java.util.Objects;
  *     public float getThunderStrength(ClientLevel level, float tickDelta) {
  *         return SimpleCloudsWeather.getThunder(level, tickDelta);
  *     }
+ *
+ *     public float getSkyDarken(ClientLevel level, float tickDelta) {
+ *         return SimpleCloudsWeather.getSkyDarken(level, tickDelta);
+ *     }
  * });
  * }</pre>
  */
 public final class IrisWeatherApi {
     /**
-     * Supplies rain and thunder strengths used by Iris.
+     * Supplies rain, thunder and sky darken strengths used by Iris.
      */
     @FunctionalInterface
     public interface Provider {
@@ -38,6 +42,13 @@ public final class IrisWeatherApi {
         default float getThunderStrength(ClientLevel level, float tickDelta) {
             return level.getThunderLevel(tickDelta);
         }
+
+        /**
+         * @return sky darken amount in the range {@code [0,1]}
+         */
+        default float getSkyDarken(ClientLevel level, float tickDelta) {
+            return level.getSkyDarken(tickDelta);
+        }
     }
 
     private static Provider provider = new Provider() {
@@ -50,13 +61,18 @@ public final class IrisWeatherApi {
         public float getThunderStrength(ClientLevel level, float tickDelta) {
             return level.getThunderLevel(tickDelta);
         }
+
+        @Override
+        public float getSkyDarken(ClientLevel level, float tickDelta) {
+            return level.getSkyDarken(tickDelta);
+        }
     };
 
     private IrisWeatherApi() {
     }
 
     /**
-     * Registers the weather provider to query for rain and thunder strengths.
+     * Registers the weather provider to query for rain, thunder and sky darken strengths.
      *
      * @param provider implementation that supplies localized weather values
      */
@@ -70,5 +86,9 @@ public final class IrisWeatherApi {
 
     public static float getThunderStrength(ClientLevel level, float tickDelta) {
         return provider.getThunderStrength(level, tickDelta);
+    }
+
+    public static float getSkyDarken(ClientLevel level, float tickDelta) {
+        return provider.getSkyDarken(level, tickDelta);
     }
 }
