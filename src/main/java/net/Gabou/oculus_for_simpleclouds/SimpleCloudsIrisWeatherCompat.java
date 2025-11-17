@@ -8,6 +8,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 
+import net.Gabou.oculus_for_simpleclouds.SimpleCloudsSkyBridgeCompat;
+
 /**
  * Registers a weather provider for Iris when Oculus is installed.
  */
@@ -51,5 +53,7 @@ public final class SimpleCloudsIrisWeatherCompat {
                         .orElse(level.getSkyDarken(tickDelta));
             }
         });
+
+        SimpleCloudsSkyBridgeCompat.init();
     }
 }
