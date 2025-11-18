@@ -1,6 +1,8 @@
 package net.Gabou.oculus_for_simpleclouds.mixin;
+
 import net.Gabou.oculus_for_simpleclouds.SimpleCloudsUniforms;
-import org.joml.Vector4f; import org.lwjgl.opengl.GL20C;
+import org.joml.Vector4f;
+import org.lwjgl.opengl.GL20C;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -31,12 +33,13 @@ public class ExtendedShaderMixin {
             GL20C.glUniform4f(loc2, type.x, type.y, type.z, type.w);
         }
         // Cloud Shadow Factor (derived from base storminess)
-        float shadowFactor = SimpleCloudsUniforms.sampleCloudState().z();
-
+        // Shadow Strength from SC
+        float shadowStrength = SimpleCloudsUniforms.sampleCloudShadow(); // we add this method below
         int loc3 = GL20C.glGetUniformLocation(program, "sc_CloudShadowFactor");
         if (loc3 >= 0) {
-            GL20C.glUniform1f(loc3, shadowFactor);
+            GL20C.glUniform1f(loc3, shadowStrength);
         }
+
 
     }
 

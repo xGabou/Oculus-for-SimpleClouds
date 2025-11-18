@@ -112,6 +112,23 @@ public final class SimpleCloudsUniforms {
         return out;
 
     }
+    private static float smoothstep(float edge0, float edge1, float x) {
+        x = Mth.clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+        return x * x * (3.0f - 2.0f * x);
+    }
+
+    public static float sampleCloudShadow() {
+        Vector4f state = sampleCloudState();
+        float thick = state.y();
+        float storm = state.z();
+
+        // replicate GLSL logic
+        float coverage = Math.max(0f, Math.min(1f, thick * 0.65f + storm * 0.45f));
+        float shadow = smoothstep(0.25f, 0.85f, coverage);
+
+        return shadow * 0.85f;
+    }
+
 
     private static float computeStorminess(CloudManager<ClientLevel> manager, CloudType type, Vec3 cameraPos, float fade) {
         if (manager.shouldUseVanillaWeather() || !type.weatherType().causesDarkening()) {
