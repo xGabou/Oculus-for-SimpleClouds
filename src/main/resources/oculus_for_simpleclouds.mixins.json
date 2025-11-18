@@ -2,14 +2,13 @@
   "required": true,
   "minVersion": "0.8",
   "package": "net.Gabou.oculus_for_simpleclouds.mixin",
-  "compatibilityLevel": "JAVA_8",
+  "compatibilityLevel": "JAVA_17",
   "refmap": "oculus_for_simpleclouds.refmap.json",
   "mixins": [
-
   ],
   "client": [
-    "CommonUniformsMixin",
-    "LevelMixin"
+    "ShaderPropertiesMixin",
+    "ExtendedShaderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

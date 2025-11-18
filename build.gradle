@@ -96,6 +96,7 @@ minecraft {
         client {
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
+            jvmArgs '-Diris.debug=true'
         }
 
         server {
@@ -158,13 +159,12 @@ dependencies {
     // If the group id is "net.minecraft" and the artifact id is one of ["client", "server", "joined"],
     // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-    compileOnly fg.deobf("curse.maven:oculus-581495:6020952")
-    runtimeOnly fg.deobf("curse.maven:oculus-581495:6020952")
-    compileOnly fg.deobf("curse.maven:embeddium-908741:5630140")
-    runtimeOnly fg.deobf("curse.maven:embeddium-908741:5630140")
-    implementation fg.deobf("nonamecrackers2:simpleclouds:0.7.2+1.20.1-forge")
+    implementation fg.deobf("curse.maven:oculus-581495:6020952")
+    implementation fg.deobf("curse.maven:embeddium-908741:5681725")
+    implementation fg.deobf("nonamecrackers2:simpleclouds:${simpleclouds_version}")
     implementation fg.deobf("nonamecrackers2:crackerslib-forge:${crackerslib_version}")
     implementation fg.deobf("nonamecrackers2:simplecloudsapi-forge:${api_version}")
+    implementation fg.deobf("curse.maven:chloride-931925:6615986")
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
