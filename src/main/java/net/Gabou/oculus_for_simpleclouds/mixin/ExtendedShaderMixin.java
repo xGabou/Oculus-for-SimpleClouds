@@ -2,6 +2,8 @@ package net.Gabou.oculus_for_simpleclouds.mixin;
 
 import net.Gabou.oculus_for_simpleclouds.SimpleCloudsUniforms;
 import org.joml.Vector4f;
+import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL20C;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -38,6 +40,18 @@ public class ExtendedShaderMixin {
         int loc3 = GL20C.glGetUniformLocation(program, "sc_CloudShadowFactor");
         if (loc3 >= 0) {
             GL20C.glUniform1f(loc3, shadowStrength);
+        }
+
+        int samplerLoc = GL20C.glGetUniformLocation(program, "sc_CloudLayerTex");
+        if (samplerLoc >= 0) {
+            SimpleCloudsUniforms.prepareCloudLayerTexture().ifPresent(textureState -> {
+                int previousActive = GL11C.glGetInteger(GL13C.GL_ACTIVE_TEXTURE);
+                int unitIndex = textureState.textureUnit();
+                GL13C.glActiveTexture(GL13C.GL_TEXTURE0 + unitIndex);
+                GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, textureState.textureId());
+                GL20C.glUniform1i(samplerLoc, unitIndex);
+                GL13C.glActiveTexture(previousActive);
+            });
         }
 
 

@@ -1,9 +1,12 @@
 package net.Gabou.oculus_for_simpleclouds;
 
+import dev.nonamecrackers2.simpleclouds.api.SimpleCloudsAPI;
+import dev.nonamecrackers2.simpleclouds.api.common.world.ScAPICloudManager;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
 import dev.nonamecrackers2.simpleclouds.common.cloud.CloudType;
 import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
+import dev.nonamecrackers2.simpleclouds.common.cloud.region.CloudRegion;
 import dev.nonamecrackers2.simpleclouds.common.world.CloudManager;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.minecraft.client.Minecraft;
@@ -14,7 +17,14 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.apache.commons.lang3.tuple.Pair;
 import org.joml.Vector4f;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL12C;
+import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL30C;
 
+import java.nio.FloatBuffer;
+import java.util.List;
 import java.util.Optional;
 
 @OnlyIn(Dist.CLIENT)
@@ -129,6 +139,10 @@ public final class SimpleCloudsUniforms {
         return shadow * 0.85f;
     }
 
+    public static Optional<CloudLayerTextureState> prepareCloudLayerTexture() {
+        return CloudLayerTexture.prepare();
+    }
+
 
     private static float computeStorminess(CloudManager<ClientLevel> manager, CloudType type, Vec3 cameraPos, float fade) {
         if (manager.shouldUseVanillaWeather() || !type.weatherType().causesDarkening()) {
@@ -162,9 +176,136 @@ public final class SimpleCloudsUniforms {
 
     private static Optional<CloudManager<ClientLevel>> tryGetManager(ClientLevel level) {
         try {
+            ScAPICloudManager apiManager = SimpleCloudsAPI.getApi().getCloudManager(level);
+            if (apiManager instanceof CloudManager<?> manager) {
+                @SuppressWarnings("unchecked")
+                CloudManager<ClientLevel> typed = (CloudManager<ClientLevel>) manager;
+                return Optional.ofNullable(typed);
+            }
+        } catch (NullPointerException | IllegalStateException ignored) {
+        }
+        try {
             return Optional.ofNullable(CloudManager.get(level));
         } catch (NullPointerException | IllegalStateException ex) {
             return Optional.empty();
+        }
+    }
+
+    public record CloudLayerTextureState(int textureId, int textureUnit) {
+    }
+
+    private static final class CloudLayerTexture {
+        private static final int GRID_RESOLUTION = 64;
+        private static final float SAMPLE_SPAN = 2048.0F;
+        private static final long UPDATE_INTERVAL_MS = 50L;
+        private static final FloatBuffer BUFFER = BufferUtils.createFloatBuffer(GRID_RESOLUTION * GRID_RESOLUTION);
+
+        private static int textureId = -1;
+        private static int textureUnit = -1;
+        private static long lastUploadMs;
+        private static boolean valid;
+
+        private static Optional<CloudLayerTextureState> prepare() {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null || mc.gameRenderer == null || mc.gameRenderer.getMainCamera() == null) {
+                valid = false;
+                return Optional.empty();
+            }
+            if (!isHighQualityModeActive()) {
+                return Optional.empty();
+            }
+            Optional<CloudManager<ClientLevel>> managerOpt = tryGetManager(mc.level);
+            if (managerOpt.isEmpty()) {
+                valid = false;
+                return Optional.empty();
+            }
+            ensureTexture();
+            long now = System.currentTimeMillis();
+            if (!valid || now - lastUploadMs >= UPDATE_INTERVAL_MS) {
+                if (!upload(managerOpt.get(), mc.gameRenderer.getMainCamera().getPosition())) {
+                    valid = false;
+                    return Optional.empty();
+                }
+                lastUploadMs = now;
+                valid = true;
+            }
+            if (!valid) {
+                return Optional.empty();
+            }
+            return Optional.of(new CloudLayerTextureState(textureId, resolveTextureUnit()));
+        }
+
+        private static void ensureTexture() {
+            if (textureId != -1) {
+                return;
+            }
+            textureId = GL11C.glGenTextures();
+            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, textureId);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_LINEAR);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_LINEAR);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_S, GL12C.GL_CLAMP_TO_EDGE);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, GL12C.GL_CLAMP_TO_EDGE);
+            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, 0);
+        }
+
+        private static boolean upload(CloudManager<ClientLevel> manager, Vec3 camera) {
+            List<CloudRegion> regions = manager.getClouds();
+            if (regions.isEmpty()) {
+                return false;
+            }
+            FloatBuffer buffer = BUFFER;
+            buffer.clear();
+            float halfSpan = SAMPLE_SPAN * 0.5f;
+            float startX = (float) camera.x - halfSpan;
+            float startZ = (float) camera.z - halfSpan;
+            float step = SAMPLE_SPAN / GRID_RESOLUTION;
+            for (int z = 0; z < GRID_RESOLUTION; z++) {
+                float sampleZ = startZ + z * step;
+                for (int x = 0; x < GRID_RESOLUTION; x++) {
+                    float sampleX = startX + x * step;
+                    float coverage = sampleCoverage(regions, sampleX, sampleZ);
+                    buffer.put(coverage);
+                }
+            }
+            buffer.flip();
+            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, textureId);
+            GL11C.glPixelStorei(GL11C.GL_UNPACK_ALIGNMENT, 4);
+            GL11C.glTexImage2D(
+                    GL11C.GL_TEXTURE_2D,
+                    0,
+                    GL30C.GL_R32F,
+                    GRID_RESOLUTION,
+                    GRID_RESOLUTION,
+                    0,
+                    GL11C.GL_RED,
+                    GL11C.GL_FLOAT,
+                    buffer
+            );
+            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, 0);
+            return true;
+        }
+
+        private static float sampleCoverage(List<CloudRegion> regions, float worldX, float worldZ) {
+            Pair<CloudRegion, Float> result = CloudRegion.calculateAt(regions, worldX, worldZ);
+            if (result == null || result.getRight() == null) {
+                return 0.0f;
+            }
+            return Mth.clamp(result.getRight(), 0.0f, 1.0f);
+        }
+
+        private static boolean isHighQualityModeActive() {
+            return SimpleCloudsRenderer.getOptionalInstance()
+                    .flatMap(SimpleCloudsRenderer::getShadowMap)
+                    .isPresent();
+        }
+
+        private static int resolveTextureUnit() {
+            if (textureUnit >= 0) {
+                return textureUnit;
+            }
+            int maxUnits = GL11C.glGetInteger(GL20C.GL_MAX_TEXTURE_IMAGE_UNITS);
+            textureUnit = Math.max(0, maxUnits - 1);
+            return textureUnit;
         }
     }
 }
