@@ -25,6 +25,7 @@ public class ExtendedShaderMixin {
         Vector4f state = SimpleCloudsUniforms.sampleCloudState();
         int loc1 = GL20C.glGetUniformLocation(program, "sc_State");
         if (loc1 >= 0) {
+            SimpleCloudsUniforms.debugPrint("CloudState = " + state);
             GL20C.glUniform4f(loc1, state.x, state.y, state.z, state.w);
         }
 
@@ -32,6 +33,7 @@ public class ExtendedShaderMixin {
         Vector4f type = SimpleCloudsUniforms.sampleCloudType();
         int loc2 = GL20C.glGetUniformLocation(program, "sc_Type");
         if (loc2 >= 0) {
+            SimpleCloudsUniforms.debugPrint("CloudType = " + type);
             GL20C.glUniform4f(loc2, type.x, type.y, type.z, type.w);
         }
         // Cloud Shadow Factor (derived from base storminess)
@@ -39,6 +41,7 @@ public class ExtendedShaderMixin {
         float shadowStrength = SimpleCloudsUniforms.sampleCloudShadow(); // we add this method below
         int loc3 = GL20C.glGetUniformLocation(program, "sc_CloudShadowFactor");
         if (loc3 >= 0) {
+            SimpleCloudsUniforms.debugPrint("CloudShadowFactor = " + shadowStrength);
             GL20C.glUniform1f(loc3, shadowStrength);
         }
 

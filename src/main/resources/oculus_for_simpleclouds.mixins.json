@@ -7,8 +7,9 @@
   "mixins": [
   ],
   "client": [
+    "CommonUniformsMixin",
     "ShaderPropertiesMixin",
-    "ExtendedShaderMixin"
+    "SimpleCloudsCompatHelperMixin"
   ],
   "injectors": {
     "defaultRequire": 1

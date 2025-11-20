@@ -34,7 +34,7 @@ public final class SimpleCloudsUniforms {
 
     private SimpleCloudsUniforms() {
     }
-    private static void debugPrint(String msg) {
+    public static void debugPrint(String msg) {
         long now = System.currentTimeMillis();
         if (now - lastDebugTime >= DEBUG_INTERVAL_MS) {
             System.out.println("[OCS DEBUG] " + msg);
@@ -81,7 +81,7 @@ public final class SimpleCloudsUniforms {
                 smoothed
         );
 
-        debugPrint("CloudState = " + out);
+
         return out;
 
     }
@@ -118,7 +118,7 @@ public final class SimpleCloudsUniforms {
                 type.transparencyFade()
         );
 
-        debugPrint("CloudType = " + out);
+
         return out;
 
     }
