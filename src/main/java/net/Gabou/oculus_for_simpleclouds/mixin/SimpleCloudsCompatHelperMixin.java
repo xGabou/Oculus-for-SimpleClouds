@@ -24,12 +24,12 @@ public abstract class SimpleCloudsCompatHelperMixin {
     @Overwrite
     public static @Nullable RendererInitializeResult findCompatErrors() {
 
-        boolean oculusLoaded = CompatHelper.isOculusLoaded();
+        boolean shadersLoaded = CompatHelper.areShadersRunning();
 
         RendererInitializeResult.Builder builder = RendererInitializeResult.builder();
 
         // The ONLY case where we throw an error:
-        if (!oculusLoaded && SimpleCloudsMod.dhLoaded()) {
+        if (!shadersLoaded && SimpleCloudsMod.dhLoaded()) {
             builder.addError(
                     null,
                     "Simple Clouds Notice",
