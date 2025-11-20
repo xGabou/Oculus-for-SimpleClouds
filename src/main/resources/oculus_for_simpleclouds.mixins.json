@@ -2,7 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "net.Gabou.oculus_for_simpleclouds.mixin",
-  "compatibilityLevel": "JAVA_17",
+  "compatibilityLevel": "JAVA_21",
   "refmap": "oculus_for_simpleclouds.refmap.json",
   "mixins": [
   ],

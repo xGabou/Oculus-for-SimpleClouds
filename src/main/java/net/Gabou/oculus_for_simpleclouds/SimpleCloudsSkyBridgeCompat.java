@@ -3,10 +3,10 @@ package net.Gabou.oculus_for_simpleclouds;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.logging.LogUtils;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.api.distmarker.OnlyIn;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
@@ -35,11 +35,11 @@ final class SimpleCloudsSkyBridgeCompat {
             return;
         }
         listenerRegistered = true;
-        MinecraftForge.EVENT_BUS.addListener(SimpleCloudsSkyBridgeCompat::onClientTick);
+        NeoForge.EVENT_BUS.addListener(SimpleCloudsSkyBridgeCompat::onClientTick);
     }
 
-    private static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || registeredLayer) {
+    private static void onClientTick(ClientTickEvent.Post event) {
+        if (registeredLayer) {
             return;
         }
         Optional<SimpleCloudsRenderer> renderer = SimpleCloudsRenderer.getOptionalInstance();

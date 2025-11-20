@@ -21,7 +21,7 @@ public final class SimpleCloudsIrisWeatherCompat {
      * Initializes the Iris weather compatibility hook.
      */
     public static void init() {
-        if (!CompatHelper.isOculusLoaded()) {
+        if (!CompatHelper.isIrisLoaded()) {
             return;
         }
 
