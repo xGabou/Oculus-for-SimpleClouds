@@ -9,7 +9,8 @@
   "client": [
     "CommonUniformsMixin",
     "ShaderPropertiesMixin",
-    "SimpleCloudsCompatHelperMixin"
+    "SimpleCloudsCompatHelperMixin",
+    "dh.SimpleCloudsDhForgeEventsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
