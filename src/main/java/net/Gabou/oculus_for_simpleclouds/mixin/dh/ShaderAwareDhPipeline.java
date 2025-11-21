@@ -69,12 +69,13 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         cloudTarget.m_83954_(Minecraft.f_91002_);
         WeightedBlendingTarget transparencyTarget = renderer.getCloudTransparencyTarget();
         transparencyTarget.m_83954_(Minecraft.f_91002_);
-        renderer.copyDepthFromMainToClouds();
         GL30.glBindFramebuffer(36008, dhFbo);
         GL30.glBindFramebuffer(36009, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
         GL30.glBlitFramebuffer(0, 0, cloudTarget.f_83915_, cloudTarget.f_83916_, 0, 0, cloudTarget.f_83915_, cloudTarget.f_83916_, 256, 9728);
         GL30.glBindFramebuffer(36009, ((MixinRenderTargetAccessor) ((Object) transparencyTarget)).simpleclouds$getFrameBufferId());
         GL30.glBlitFramebuffer(0, 0, cloudTarget.f_83915_, cloudTarget.f_83916_, 0, 0, transparencyTarget.f_83915_, transparencyTarget.f_83916_, 256, 9728);
+        renderer.copyDepthFromMainToClouds();
+        renderer.copyDepthFromCloudsToTransparency();
         GL30.glBindFramebuffer(36160, dhFbo);
     }
 
