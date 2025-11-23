@@ -1,0 +1,176 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  com.google.common.collect.Lists
+ *  dev.nonamecrackers2.simpleclouds.api.common.cloud.CloudMode
+ *  net.minecraft.resources.ResourceLocation
+ *  net.minecraftforge.common.ForgeConfigSpec
+ *  net.minecraftforge.common.ForgeConfigSpec$Builder
+ *  net.minecraftforge.common.ForgeConfigSpec$ConfigValue
+ *  nonamecrackers2.crackerslib.common.config.ConfigHelper
+ *  org.apache.commons.lang3.tuple.Pair
+ */
+package dev.nonamecrackers2.simpleclouds.common.config;
+
+import com.google.common.collect.Lists;
+import dev.nonamecrackers2.simpleclouds.api.common.cloud.CloudMode;
+import dev.nonamecrackers2.simpleclouds.client.mesh.LevelOfDetailOptions;
+import dev.nonamecrackers2.simpleclouds.client.mesh.generator.GenerationInterval;
+import dev.nonamecrackers2.simpleclouds.client.world.FogRenderMode;
+import java.util.List;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.common.ForgeConfigSpec;
+import nonamecrackers2.crackerslib.common.config.ConfigHelper;
+import org.apache.commons.lang3.tuple.Pair;
+
+public class SimpleCloudsConfig {
+    public static final ClientConfig CLIENT;
+    public static final ForgeConfigSpec CLIENT_SPEC;
+    public static final CommonConfig COMMON;
+    public static final ForgeConfigSpec COMMON_SPEC;
+    public static final ServerConfig SERVER;
+    public static final ForgeConfigSpec SERVER_SPEC;
+
+    static {
+        Pair clientPair = new ForgeConfigSpec.Builder().configure(ClientConfig::new);
+        CLIENT = (ClientConfig)((Object)clientPair.getLeft());
+        CLIENT_SPEC = (ForgeConfigSpec)clientPair.getRight();
+        Pair commonPair = new ForgeConfigSpec.Builder().configure(CommonConfig::new);
+        COMMON = (CommonConfig)((Object)commonPair.getLeft());
+        COMMON_SPEC = (ForgeConfigSpec)commonPair.getRight();
+        Pair serverPair = new ForgeConfigSpec.Builder().configure(ServerConfig::new);
+        SERVER = (ServerConfig)((Object)serverPair.getLeft());
+        SERVER_SPEC = (ForgeConfigSpec)serverPair.getRight();
+    }
+
+    public static class ClientConfig
+    extends ConfigHelper {
+        public final ForgeConfigSpec.ConfigValue<Boolean> showCloudPreviewerInfoPopup;
+        public final ForgeConfigSpec.ConfigValue<Integer> cloudHeight;
+        public final ForgeConfigSpec.ConfigValue<Double> speedModifier;
+        public final ForgeConfigSpec.ConfigValue<Integer> framesToGenerateMesh;
+        public final ForgeConfigSpec.ConfigValue<Boolean> testSidesThatAreOccluded;
+        public final ForgeConfigSpec.ConfigValue<Boolean> renderStormFog;
+        public final ForgeConfigSpec.ConfigValue<LevelOfDetailOptions> levelOfDetail;
+        public final ForgeConfigSpec.ConfigValue<Boolean> frustumCulling;
+        public final ForgeConfigSpec.ConfigValue<Double> stormFogAngle;
+        public final ForgeConfigSpec.ConfigValue<Boolean> renderClouds;
+        public final ForgeConfigSpec.ConfigValue<Boolean> generateMesh;
+        public final ForgeConfigSpec.ConfigValue<CloudMode> cloudMode = this.createEnumValue((Enum)CloudMode.AMBIENT, "clientSideCloudMode", false, "Specifies how the clouds should behave in a client-side only context. SINGLE uses only a single cloud type. AMBIENT carves clouds around the player, keeping them at a distance. Due to be on a client-side only context, DEFAULT can not be picked and the vanilla weather system will be used. If Simple Clouds is installed on a server, this option will be ignored and the client will instead use the option set by the server", (Enum[])new CloudMode[]{CloudMode.AMBIENT, CloudMode.SINGLE});
+        public final ForgeConfigSpec.ConfigValue<String> singleModeCloudType;
+        public final ForgeConfigSpec.ConfigValue<Integer> singleModeFadeStartPercentage;
+        public final ForgeConfigSpec.ConfigValue<Integer> singleModeFadeEndPercentage;
+        public final ForgeConfigSpec.ConfigValue<Long> cloudSeed;
+        public final ForgeConfigSpec.ConfigValue<Boolean> useSpecificSeed;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> dimensionWhitelist;
+        public final ForgeConfigSpec.ConfigValue<Boolean> whitelistAsBlacklist;
+        public final ForgeConfigSpec.ConfigValue<FogRenderMode> fogMode;
+        public final ForgeConfigSpec.ConfigValue<Boolean> lightningColorVariation;
+        public final ForgeConfigSpec.ConfigValue<Double> rainAngle;
+        public final ForgeConfigSpec.ConfigValue<Integer> thunderAttenuationDistance;
+        public final ForgeConfigSpec.ConfigValue<Boolean> stormFogLightningFlashes;
+        public final ForgeConfigSpec.ConfigValue<Integer> transparencyRenderDistancePercentage;
+        public final ForgeConfigSpec.ConfigValue<Boolean> concurrentComputeDispatches;
+        public final ForgeConfigSpec.ConfigValue<GenerationInterval> generationInterval;
+        public final ForgeConfigSpec.ConfigValue<Integer> targetMeshGenFps;
+        public final ForgeConfigSpec.ConfigValue<Boolean> customRainSounds;
+        public final ForgeConfigSpec.ConfigValue<Boolean> renderCustomRain;
+        public final ForgeConfigSpec.ConfigValue<Boolean> cubeNormals;
+        public final ForgeConfigSpec.ConfigValue<Boolean> shadedClouds;
+        public final ForgeConfigSpec.ConfigValue<Boolean> transparency;
+        public final ForgeConfigSpec.ConfigValue<Boolean> atmosphericClouds;
+        public final ForgeConfigSpec.ConfigValue<Boolean> distantShadows;
+        public final ForgeConfigSpec.ConfigValue<Integer> shadowDistance;
+        public final ForgeConfigSpec.ConfigValue<Boolean> showVivecraftNotice;
+
+        public ClientConfig(ForgeConfigSpec.Builder builder) {
+            super(builder, "simpleclouds");
+            this.showCloudPreviewerInfoPopup = this.createValue(true, "showCloudPreviewerInfoPopup", false, "Specifies if the info pop-up should appear when opening the cloud previewer menu");
+            this.speedModifier = this.createRangedDoubleValue(1.0, 0.1, 32.0, "clientSideSpeedModifier", false, "Specifies the movement speed of the clouds");
+            this.cloudHeight = this.createRangedIntValue(128, 0, 2048, "clientSideCloudHeight", false, "Specifies the render Y offset for the clouds");
+            this.dimensionWhitelist = this.createListValue(String.class, () -> Lists.newArrayList((Object[])new String[]{"minecraft:overworld"}), val -> ResourceLocation.m_135830_((String)val), "dimensionWhitelist", false, "Specifies the allowed dimensions that Simple Clouds is active in");
+            this.whitelistAsBlacklist = this.createValue(false, "whitelistAsBlacklist", false, "Specifies if the dimension whitelist should instead be use as a blacklist");
+            builder.comment("Preference").push("preference");
+            this.fogMode = this.createEnumValue(FogRenderMode.SCREEN_SPACE, "fogMode", false, "Specifies the type of world fog that should be used. Each has their own advantages and disadvantages, ranging from visual discrepancies to possible compatibility issues");
+            this.rainAngle = this.createRangedDoubleValue(15.0, 0.0, 45.0, "rainAngle", false, "Specifies the angle of the rain, perpendicular to the ground. Higher values makes it more horizontal");
+            this.stormFogAngle = this.createRangedDoubleValue(80.0, 50.0, 90.0, "stormFogAngle", false, "Specifies the angle parellel to the horizon that the storm fog should be directed to");
+            this.lightningColorVariation = this.createValue(true, "lightningColorVariation", false, "Specifies if lightning should have slight random color variation");
+            this.thunderAttenuationDistance = this.createRangedIntValue(2000, 100, 20000, "thunderAttenuationDistance", false, "Specifies the attenuation distance for thunder. The lower the value, the quieter it will be from longer distances");
+            this.customRainSounds = this.createValue(true, "customRainSounds", false, "Specifies if new rain sounds should replace the vanilla ones");
+            this.renderCustomRain = this.createValue(true, "renderCustomRain", false, "Specifies if custom rain rendering should be used. Automatically disabled when using Pretty/Particle Rain");
+            builder.pop();
+            builder.comment("Visual").push("visual");
+            this.cubeNormals = this.createValue(false, "cubeNormals", false, "Specifies if normals should be applied to each individual cube in the cloud which applies a bit of shading per cube face. Helps distinguish each individual cube in a cloud");
+            this.shadedClouds = this.createValue(true, "shadedClouds", true, "Specifies if minimal shading should be applied to clouds. May cause performance drops");
+            this.transparency = this.createValue(true, "transparency", false, "Specifies if transparent cubes should be generated for supported cloud types. May cause performance drops");
+            this.atmosphericClouds = this.createValue(true, "atmosphericClouds", false, "Specifies if a purely visual 2D atmospheric cloud layer should render");
+            builder.pop();
+            builder.comment("Seed").push("seed");
+            this.cloudSeed = this.createValue(0L, "cloudSeed", false, "Specifies the seed to use for the clouds. Will apply for all servers that the user connects to with the mod on the client-side only");
+            this.useSpecificSeed = this.createValue(false, "useSpecificSeed", false, "Specifies if the seed set by the 'Cloud Seed' option should be used or not");
+            builder.pop();
+            builder.comment("Performance").push("performance");
+            builder.comment("Mesh Generation").push("mesh_generation");
+            this.generationInterval = this.createEnumValue(GenerationInterval.TARGET_FPS, "generationInterval", false, "How the amount of frames used to generate the entire mesh is calculated. Static will use the 'Frames To Generate Mesh' option. Dynamic will calculate it automatically depending on your FPS. Target FPS will target a certain perceived framerate for mesh generation");
+            this.framesToGenerateMesh = this.createRangedIntValue(5, 1, 32, "framesToGenerateMesh", false, "Specifies how many frames it should take to generate the entire cloud mesh. Higher values will improve performance at the cost of stuttery cloud movement");
+            this.targetMeshGenFps = this.createRangedIntValue(30, 1, 1000, "targetMeshGenFps", false, "Used to set the target FPS with the 'Target FPS' option in 'Generation Interval'");
+            builder.pop();
+            this.concurrentComputeDispatches = this.createValue(false, "concurrentComputeDispatches", false, "EXPERIMENTAL. Uses a slightly modified algorithm that removes sync calls between chunk generator compute dispatches at the cost of higher memory usage. May result in a performance boost");
+            this.testSidesThatAreOccluded = this.createValue(false, "testSidesThatAreOccluded", false, "Specifies if faces that are not visible to the camera should be tested during mesh generation. Settings this to off can improve performance at the cost of visual issues with shadows and storm fog");
+            this.renderStormFog = this.createValue(true, "renderStormFog", false, "Specifies if 'rain' beneath storm clouds should appear or not. Disabling can improve performance, especially when in VR");
+            this.levelOfDetail = this.createEnumValue(LevelOfDetailOptions.HIGH, "levelOfDetail", false, "Specifies the quality of the level of detail. A lower setting makes clouds lower quality faster");
+            this.frustumCulling = this.createValue(true, "frustumCulling", false, "Culls cloud chunks not visible to the player. Generally should not be disabled, but can fix visual issues when looking around fast with higher frames per mesh generation values");
+            this.stormFogLightningFlashes = this.createValue(true, "stormFogLightningFlashes", false, "Toggles lightning flashes that can be seen in storm fog. Disabling can lead to potential performance gains when lightning spawns");
+            this.transparencyRenderDistancePercentage = this.createRangedIntValue(50, 1, 100, "transparencyRenderDistancePercentage", false, "Specifies the maximum percentage of the total viewable distance transparent cubes can be generated in");
+            builder.pop();
+            builder.comment("Debug").push("debug");
+            this.renderClouds = this.createValue(true, "renderClouds", false, "Toggles rendering of the clouds");
+            this.generateMesh = this.createValue(true, "generateMesh", false, "Toggles the generation of the cloud mesh");
+            builder.pop();
+            builder.comment("Single Mode").push("single_mode");
+            this.singleModeCloudType = this.createValue("simpleclouds:itty_bitty", "clientSideSingleModeCloudType", false, "Specifies the cloud type that should be used when the SINGLE cloud mode is active");
+            this.singleModeFadeStartPercentage = this.createRangedIntValue(80, 0, 100, "singleModeFadeStartPercentage", false, "Specifies the percentage of the cloud render distance that the clouds should begin to fade away, when using the single cloud type mode (e.x. 50 would start to make the clouds fade away at half of the cloud render distance)");
+            this.singleModeFadeEndPercentage = this.createRangedIntValue(100, 0, 100, "singleModeFadeEndPercentage", false, "Specifies the percentage of the cloud render distance that the clouds will be fully faded away, when using the single cloud type mode (e.x. 50 would make the clouds completely disappear past half the cloud render distance)");
+            builder.pop();
+            builder.comment("Distant Horizons").push("distant_horizons");
+            this.distantShadows = this.createValue(true, "distantShadows", false, "Toggles shadows that appear on distant terrain");
+            this.shadowDistance = this.createRangedIntValue(5000, 500, 15000, "shadowDistance", false, "Specifies the distance shadows can render");
+            builder.pop();
+            this.showVivecraftNotice = this.createValue(true, "showVivecraftNotice", false, "Shows the Vivecraft notice on startup");
+        }
+    }
+
+    public static class CommonConfig
+    extends ConfigHelper {
+        public final ForgeConfigSpec.ConfigValue<Integer> lightningSpawnIntervalMin;
+        public final ForgeConfigSpec.ConfigValue<Integer> lightningSpawnIntervalMax;
+
+        public CommonConfig(ForgeConfigSpec.Builder builder) {
+            super(builder, "simpleclouds");
+            builder.comment("Weather").push("weather");
+            builder.comment("Lightning And Thunder").push("lightning_and_thunder");
+            this.lightningSpawnIntervalMin = this.createRangedIntValue(10, 1, 72000, "lightningSpawnIntervalMinimum", false, "Specifies the shortest interval until the next lightning strike will spawn, in ticks");
+            this.lightningSpawnIntervalMax = this.createRangedIntValue(160, 1, 72000, "lightningSpawnIntervalMaximum", false, "Specifies the longest interval until the next lightning strike will spawn, in ticks");
+            builder.pop();
+            builder.pop();
+        }
+    }
+
+    public static class ServerConfig
+    extends ConfigHelper {
+        public final ForgeConfigSpec.ConfigValue<CloudMode> cloudMode;
+        public final ForgeConfigSpec.ConfigValue<String> singleModeCloudType;
+        public final ForgeConfigSpec.ConfigValue<List<? extends String>> dimensionWhitelist = this.createListValue(String.class, () -> Lists.newArrayList((Object[])new String[]{"minecraft:overworld"}), val -> ResourceLocation.m_135830_((String)val), "dimensionWhitelist", true, "Specifies the allowed dimensions that Simple Clouds is active in");
+        public final ForgeConfigSpec.ConfigValue<Boolean> whitelistAsBlacklist = this.createValue(false, "whitelistAsBlacklist", true, "Specifies if the dimension whitelist should instead be use as a blacklist");
+
+        public ServerConfig(ForgeConfigSpec.Builder builder) {
+            super(builder, "simpleclouds");
+            this.cloudMode = this.createEnumValue((Enum)CloudMode.DEFAULT, "cloudMode", false, "Specifies how the clouds should behave. DEFAULT uses all cloud types with the default weather in Simple Clouds. SINGLE uses only a single cloud type and its associated weather. AMBIENT disables localized weather and carves clouds around the player, keeping them at a distance");
+            builder.comment("Single Mode").push("single_mode");
+            this.singleModeCloudType = this.createValue("simpleclouds:itty_bitty", "singleModeCloudType", false, "Specifies the cloud type that should be used when the SINGLE cloud mode is active");
+            builder.pop();
+        }
+    }
+}
+

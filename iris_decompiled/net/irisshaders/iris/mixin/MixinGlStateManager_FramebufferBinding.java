@@ -1,0 +1,70 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  com.mojang.blaze3d.platform.GlStateManager
+ *  org.spongepowered.asm.mixin.Mixin
+ *  org.spongepowered.asm.mixin.injection.At
+ *  org.spongepowered.asm.mixin.injection.Inject
+ *  org.spongepowered.asm.mixin.injection.callback.CallbackInfo
+ */
+package net.irisshaders.iris.mixin;
+
+import com.mojang.blaze3d.platform.GlStateManager;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(value={GlStateManager.class}, remap=false)
+public class MixinGlStateManager_FramebufferBinding {
+    private static int iris$drawFramebuffer = 0;
+    private static int iris$readFramebuffer = 0;
+    private static int iris$program = 0;
+
+    @Inject(method={"_glBindFramebuffer(II)V"}, at={@At(value="HEAD")}, cancellable=true)
+    private static void iris$avoidRedundantBind(int target, int framebuffer, CallbackInfo ci) {
+        if (target == 36160) {
+            if (iris$drawFramebuffer == target && iris$readFramebuffer == target) {
+                ci.cancel();
+            } else {
+                iris$drawFramebuffer = framebuffer;
+                iris$readFramebuffer = framebuffer;
+            }
+        } else if (target == 36009) {
+            if (iris$drawFramebuffer == target) {
+                ci.cancel();
+            } else {
+                iris$drawFramebuffer = framebuffer;
+            }
+        } else if (target == 36008) {
+            if (iris$readFramebuffer == target) {
+                ci.cancel();
+            } else {
+                iris$readFramebuffer = framebuffer;
+            }
+        } else {
+            throw new IllegalStateException("Invalid framebuffer target: " + target);
+        }
+    }
+
+    @Inject(method={"_glUseProgram"}, at={@At(value="HEAD")}, cancellable=true, remap=false)
+    private static void iris$avoidRedundantBind2(int pInt0, CallbackInfo ci) {
+        if (iris$program == pInt0) {
+            ci.cancel();
+        } else {
+            iris$program = pInt0;
+        }
+    }
+
+    @Inject(method={"_glDeleteFramebuffers(I)V"}, at={@At(value="HEAD")}, remap=false)
+    private static void iris$trackFramebufferDelete(int framebuffer, CallbackInfo ci) {
+        if (iris$drawFramebuffer == framebuffer) {
+            iris$drawFramebuffer = 0;
+        }
+        if (iris$readFramebuffer == framebuffer) {
+            iris$readFramebuffer = 0;
+        }
+    }
+}
+

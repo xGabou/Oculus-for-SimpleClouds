@@ -1,0 +1,2 @@
+Summary for C:\Users\matga\.gradle\caches\modules-2\files-2.1\curse.maven\oculus-581495\6020952\984f774e71790deaec674c7587bd24e0711871b2\oculus-581495-6020952.jar
+Decompiled with CFR 0.152
