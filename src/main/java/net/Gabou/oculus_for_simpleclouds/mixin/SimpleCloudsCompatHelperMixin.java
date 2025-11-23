@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Overwrite;
 
 import javax.annotation.Nullable;
 
-@Mixin(SimpleCloudsCompatHelper.class)
+@Mixin(value = SimpleCloudsCompatHelper.class, remap = false)
 public abstract class SimpleCloudsCompatHelperMixin {
 
     /**

@@ -10,7 +10,13 @@
     "CommonUniformsMixin",
     "ShaderPropertiesMixin",
     "SimpleCloudsCompatHelperMixin",
-    "dh.SimpleCloudsDhForgeEventsMixin"
+    "dh.SimpleCloudsDhForgeEventsMixin",
+    "dh.SimpleCloudsBeforeDhRenderHandlerMixin",
+    "dh.SimpleCloudsAfterDhEventGuardMixin",
+    "SimpleCloudsNoUnsafeCopyMixin",
+    "dh.SimpleCloudsAfterDhRenderHandlerMixin",
+    "dh.SC_PipelineTracer",
+    "GameRendererDebugBlitMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -27,10 +27,7 @@ public class ShaderPropertiesMixin {
         builder.addVariable("vec4", "sc_State", "vec4(0, 0, 0, 0)", true);
         builder.addVariable("vec4", "sc_Type", "vec4(0, 0, 0, 0)", true);
         builder.addVariable("float", "sc_CloudShadowFactor", "0.0", true);
-        builder.addVariable("sampler2D", "sc_CloudLayerTex", "0", true);
-
-
-
+        // Sampler uniforms are bound directly in ExtendedShaderMixin.
     }
 
 }
