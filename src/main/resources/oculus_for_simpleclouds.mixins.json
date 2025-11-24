@@ -15,8 +15,7 @@
     "dh.SimpleCloudsAfterDhEventGuardMixin",
     "SimpleCloudsNoUnsafeCopyMixin",
     "dh.SimpleCloudsAfterDhRenderHandlerMixin",
-    "dh.SC_PipelineTracer",
-    "GameRendererDebugBlitMixin"
+    "dh.SC_PipelineTracer"
   ],
   "injectors": {
     "defaultRequire": 1

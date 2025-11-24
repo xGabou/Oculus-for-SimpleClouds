@@ -97,7 +97,9 @@ minecraft {
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             property 'forge.enabledGameTestNamespaces', mod_id
             jvmArgs '-Diris.debug=true'
+            jvmArg  '-Dmixin.env.disableRefMap=false'
             jvmArgs '-Dofsc.debug.blitClouds=false'
+            jvmArgs '-Dofsc.debug.depthLog=true'
 
         }
 

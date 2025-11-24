@@ -19,6 +19,7 @@ import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
 import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
+import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -116,6 +117,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         WeightedBlendingTarget transparencyTarget = renderer.getCloudTransparencyTarget();
         transparencyTarget.clear(Minecraft.ON_OSX);
         RenderTarget mainTarget = mc.getMainRenderTarget();
+        // Capture vanilla depth now (pre-shader) for final composite occlusion.
+        FinalCloudCompositeHandler.captureDepth(mainTarget);
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
         int dhDepthTex = resolveDepthTextureId(dhFbo);
         boolean mergedDh = dhDepthTex > 0 && mergeDhDepthIntoCloudDepth(cloudTarget, dhFbo);
@@ -166,6 +169,12 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         float cloudB = cloudCol[2];
         ProfilerFiller p = mc.getProfiler();
         p.push("clouds");
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+        boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthMask(true);
         if (DEBUG_BLIT_CLOUD_TARGET) {
             cloudTarget.bindWrite(false);
             GL11.glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
@@ -185,6 +194,11 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         }
         p.pop();
         stack.popPose();
+        if (!depthEnabled) {
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+        }
+        GL11.glDepthFunc(prevDepthFunc);
+        GL11.glDepthMask(prevDepthMask);
         p.push("cloud_shadows");
         renderer.doCloudShadowProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudTarget.getDepthTextureId());
         p.pop();
@@ -423,9 +437,5 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     }
 
     private static void debug(String msg) {
-        if (!msg.equals(lastDebugMsg)) {
-            System.out.println("[OFSC DEBUG] " + msg);
-            lastDebugMsg = msg;
-        }
     }
 }
