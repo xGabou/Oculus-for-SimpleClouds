@@ -48,10 +48,12 @@ public final class FinalCloudCompositeHandler {
     private static long lastDepthLogMs = 0L;
     private static boolean capturedThisFrame = false;
     private static boolean reverseDepthDetected = false;
+    private static boolean dhDepthMergedThisFrame = false;
     private static int dhMergeProgram = -1;
     private static int dhMergeVao = -1;
     private static int dhMergeVbo = -1;
     private static int dhMergeSamplerLoc = -1;
+    private static final boolean DEBUG_DEPTH_SELECTION = Boolean.getBoolean("ofsc.debug.depthSelection");
 
     private FinalCloudCompositeHandler() {
     }
@@ -72,6 +74,8 @@ public final class FinalCloudCompositeHandler {
             int w = source.width;
             int h = source.height;
             ensureSceneDepthTarget(w, h);
+            dhDepthMergedThisFrame = false;
+            externalSceneDepthTex = -1;
             int prevReadFbo = GL11.glGetInteger(36010);
             int prevDrawFbo = GL11.glGetInteger(36006);
             int sourceFbo = ((MixinRenderTargetAccessor)source).simpleclouds$getFrameBufferId();
@@ -82,12 +86,6 @@ public final class FinalCloudCompositeHandler {
                     int depthName = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
                     if (depthName > 0) {
                         externalSceneDepthTex = depthName;
-                        capturedW = w;
-                        capturedH = h;
-                        capturedThisFrame = true;
-                        GL30.glBindFramebuffer(36160, prevReadFbo);
-                        GL30.glBindFramebuffer(36160, prevDrawFbo);
-                        return;
                     }
                 }
 
@@ -99,6 +97,8 @@ public final class FinalCloudCompositeHandler {
                 GL30.glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, 256, 9728);
                 GL30.glBindFramebuffer(36008, prevReadFbo);
                 GL30.glBindFramebuffer(36009, prevDrawFbo);
+                capturedW = w;
+                capturedH = h;
                 capturedThisFrame = true;
             }
         }
@@ -109,6 +109,9 @@ public final class FinalCloudCompositeHandler {
      * can occlude clouds during the final composite pass.
      */
     public static void mergeDistantHorizonsDepth(int dhDepthTex, boolean reverseDepth) {
+        if (dhDepthTex <= 0 && capturedThisFrame && DEBUG_DEPTH_SELECTION) {
+            System.out.println("[OFSC DEBUG] DH depth not exposed; falling back to captured vanilla depth only.");
+        }
         if (!capturedThisFrame || dhDepthTex <= 0 || capturedSceneDepthTex <= 0 || captureFbo <= 0) {
             return;
         }
@@ -167,6 +170,7 @@ public final class FinalCloudCompositeHandler {
         GL11.glViewport(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
 
         reverseDepthDetected = reverseDepth;
+        dhDepthMergedThisFrame = true;
     }
 
     private static void compositeClouds() {
@@ -189,21 +193,29 @@ public final class FinalCloudCompositeHandler {
                                 boolean depthMask = GL11.glGetBoolean(2930);
                                 int mainFbo = ((MixinRenderTargetAccessor)mc.getMainRenderTarget()).simpleclouds$getFrameBufferId();
                                 int originalDepthTex = mc.getMainRenderTarget().getDepthTextureId();
+                                int preferredSceneDepth = dhDepthMergedThisFrame && capturedSceneDepthTex > 0
+                                        ? capturedSceneDepthTex
+                                        : (externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex);
                                 GL30.glBindFramebuffer(36160, mainFbo);
                                 GL11.glViewport(0, 0, windowW, windowH);
                                 boolean depthAttachmentOk = false;
-                                int depthTex = externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex;
+                                int depthTex = preferredSceneDepth;
+                                int attachedDepthTex = 0;
                                 if (depthTex > 0) {
                                     GL30.glFramebufferTexture2D(36160, 36096, 3553, depthTex, 0);
                                     int status = GL30.glCheckFramebufferStatus(36160);
                                     depthAttachmentOk = status == 36053;
+                                    attachedDepthTex = depthAttachmentOk ? depthTex : 0;
                                     if (!depthAttachmentOk) {
                                         System.out.println("[OFSC WARN] Composite FBO incomplete for depth (" + status + "); falling back to shader compare.");
                                         GL30.glFramebufferTexture2D(36160, 36096, 3553, originalDepthTex, 0);
+                                        attachedDepthTex = originalDepthTex;
                                     }
+                                } else if (originalDepthTex > 0) {
+                                    attachedDepthTex = originalDepthTex;
                                 }
 
-                                if (depthAttachmentOk) {
+                                if (depthAttachmentOk || attachedDepthTex > 0) {
                                     GL11.glEnable(2929);
                                     GL11.glDepthFunc(reverseDepthDetected ? 518 : 515);
                                 } else {
@@ -221,11 +233,14 @@ public final class FinalCloudCompositeHandler {
                                 GL11.glBindTexture(3553, cloudDepthTex);
                                 GL20.glUniform1i(locCloudDepth, 1);
                                 GL13.glActiveTexture(33986);
-                                GL11.glBindTexture(3553, externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex);
+                                int sampledSceneDepth = attachedDepthTex > 0 ? attachedDepthTex
+                                        : (preferredSceneDepth > 0 ? preferredSceneDepth
+                                        : (externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex));
+                                GL11.glBindTexture(3553, sampledSceneDepth);
                                 GL20.glUniform1i(locSceneDepth, 2);
                                 GL20.glUniform1f(locDepthBias, 0.001F);
                                 GL20.glUniform1i(locReverseDepth, reverseDepthDetected ? 1 : 0);
-                                //maybeLogDepthSamples(cloudDepthTex, capturedSceneDepthTex, windowW, windowH);
+                                maybeLogDepthChoice(sampledSceneDepth, attachedDepthTex, cloudDepthTex, windowW, windowH);
                                 GL30.glBindVertexArray(compositeVao);
                                 GL11.glDrawArrays(4, 0, 3);
                                 GL30.glBindVertexArray(prevVAO);
@@ -339,6 +354,32 @@ public final class FinalCloudCompositeHandler {
         GL30.glDrawBuffer(0);
         GL30.glReadBuffer(0);
         GL30.glBindFramebuffer(36160, 0);
+    }
+
+    private static void maybeLogDepthChoice(int sampledSceneDepthTex, int attachedDepthTex, int cloudDepthTex, int w, int h) {
+        if (!DEBUG_DEPTH_SELECTION) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastDepthLogMs < 500L) {
+            return;
+        }
+        lastDepthLogMs = now;
+        float sceneCenter = sampleDepthAt(sampledSceneDepthTex, 0.5F, 0.5F);
+        float mergedCenter = dhDepthMergedThisFrame ? sampleDepthAt(capturedSceneDepthTex, 0.5F, 0.5F) : -1.0F;
+        float cloudCenter = sampleDepthAt(cloudDepthTex, 0.5F, 0.5F);
+        System.out.println(String.format(
+                "[OFSC DEBUG] Depth choice: sampled=%d attached=%d dhMerged=%s reverseDepth=%s size=%dx%d sceneCenter=%.4f mergedCenter=%.4f cloudCenter=%.4f",
+                sampledSceneDepthTex,
+                attachedDepthTex,
+                dhDepthMergedThisFrame,
+                reverseDepthDetected,
+                w,
+                h,
+                sceneCenter,
+                mergedCenter,
+                cloudCenter
+        ));
     }
 
     private static void maybeLogDepthSamples(int cloudDepthTex, int sceneDepthTex, int w, int h) {
