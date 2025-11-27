@@ -1,6 +1,7 @@
 package net.Gabou.oculus_for_simpleclouds.mixin.dh;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.nonamecrackers2.simpleclouds.SimpleCloudsMod;
 import dev.nonamecrackers2.simpleclouds.client.event.impl.DetermineCloudRenderPipelineEvent;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
@@ -36,7 +37,12 @@ public abstract class SC_PipelineTracer {
             )
     )
     private DetermineCloudRenderPipelineEvent ofsc_replaceEvent(CloudsRenderPipeline ignored) {
-        CloudsRenderPipeline pipeline = CompatHelper.areShadersRunning() ? ShaderAwareDhPipeline.INSTANCE : CloudsRenderPipeline.DEFAULT;
+        CloudsRenderPipeline pipeline;
+        if (CompatHelper.areShadersRunning()) {
+            pipeline = SimpleCloudsMod.dhLoaded() ? ShaderAwareDhPipeline.INSTANCE : ShaderAwareDhPipeline.INSTANCE;
+        } else {
+            pipeline = CloudsRenderPipeline.DEFAULT;
+        }
         return new DetermineCloudRenderPipelineEvent(pipeline);
     }
 
