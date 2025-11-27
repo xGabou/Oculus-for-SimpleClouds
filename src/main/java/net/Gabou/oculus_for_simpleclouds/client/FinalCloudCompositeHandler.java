@@ -42,6 +42,7 @@ public final class FinalCloudCompositeHandler {
     private static int locReverseDepth = -1;
     private static int externalSceneDepthTex = -1;
     private static int capturedSceneDepthTex = -1;
+    private static int capturedSceneDepthFormat = 33190;
     private static int captureFbo = -1;
     private static int capturedW = -1;
     private static int capturedH = -1;
@@ -54,6 +55,8 @@ public final class FinalCloudCompositeHandler {
     private static int dhMergeVbo = -1;
     private static int dhMergeSamplerLoc = -1;
     private static final boolean DEBUG_DEPTH_SELECTION = Boolean.getBoolean("ofsc.debug.depthSelection");
+    private static boolean dhRenderingActive = false;
+    private static int dhDepthFbo = -1;
 
     private FinalCloudCompositeHandler() {
     }
@@ -73,12 +76,24 @@ public final class FinalCloudCompositeHandler {
         if (source != null) {
             int w = source.width;
             int h = source.height;
-            ensureSceneDepthTarget(w, h);
+            int sourceFbo = ((MixinRenderTargetAccessor)source).simpleclouds$getFrameBufferId();
+            int depthFormat = getDepthAttachmentFormat(sourceFbo);
+            if (dhRenderingActive && dhDepthFbo > 0) {
+                int dhDepthFormat = getDepthAttachmentFormat(dhDepthFbo);
+                if (dhDepthFormat != 0) {
+                    depthFormat = dhDepthFormat;
+                } else if (DEBUG_DEPTH_SELECTION) {
+                    System.out.println("[OFSC DEBUG] DH depth attachment not exposed; using main depth format " + depthFormat);
+                }
+            }
+            ensureSceneDepthTarget(w, h, depthFormat);
+            if (DEBUG_DEPTH_SELECTION && dhRenderingActive) {
+                System.out.println("[OFSC DEBUG] Depth capture formats: source=" + depthFormat + " capture=" + capturedSceneDepthFormat + " dhFbo=" + dhDepthFbo + " mainFbo=" + sourceFbo);
+            }
             dhDepthMergedThisFrame = false;
             externalSceneDepthTex = -1;
             int prevReadFbo = GL11.glGetInteger(36010);
             int prevDrawFbo = GL11.glGetInteger(36006);
-            int sourceFbo = ((MixinRenderTargetAccessor)source).simpleclouds$getFrameBufferId();
             if (sourceFbo > 0 && capturedSceneDepthTex > 0 && captureFbo > 0) {
                 GL30.glBindFramebuffer(36160, sourceFbo);
                 int attachmentType = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36048);
@@ -327,7 +342,25 @@ public final class FinalCloudCompositeHandler {
         }
     }
 
-    private static void ensureSceneDepthTarget(int w, int h) {
+    public static void beginDistantHorizonsDepthAccess(int dhFbo) {
+        dhRenderingActive = true;
+        dhDepthFbo = dhFbo;
+    }
+
+    public static void endDistantHorizonsDepthAccess() {
+        dhRenderingActive = false;
+        dhDepthFbo = -1;
+    }
+
+    private static void ensureSceneDepthTarget(int w, int h, int desiredInternalFormat) {
+        DepthFormatInfo formatInfo = toDepthFormatInfo(desiredInternalFormat);
+        if (formatInfo == null) {
+            formatInfo = toDepthFormatInfo(capturedSceneDepthFormat);
+        }
+        if (formatInfo == null) {
+            formatInfo = new DepthFormatInfo(33190, 6402, 5126);
+        }
+        boolean formatChanged = desiredInternalFormat != 0 && desiredInternalFormat != capturedSceneDepthFormat;
         if (capturedSceneDepthTex == -1) {
             capturedSceneDepthTex = GL11.glGenTextures();
             GL11.glBindTexture(3553, capturedSceneDepthTex);
@@ -339,10 +372,14 @@ public final class FinalCloudCompositeHandler {
             GL11.glBindTexture(3553, capturedSceneDepthTex);
         }
 
-        if (w != capturedW || h != capturedH) {
-            GL11.glTexImage2D(3553, 0, 33190, w, h, 0, 6402, 5126, (ByteBuffer)null);
+        if (w != capturedW || h != capturedH || formatChanged) {
+            GL11.glTexImage2D(3553, 0, formatInfo.internalFormat, w, h, 0, formatInfo.format, formatInfo.type, (ByteBuffer)null);
             capturedW = w;
             capturedH = h;
+            capturedSceneDepthFormat = formatInfo.internalFormat;
+            if (DEBUG_DEPTH_SELECTION) {
+                System.out.println("[OFSC DEBUG] Allocated capture depth tex format=" + formatInfo.internalFormat + " size=" + w + "x" + h);
+            }
         }
 
         if (captureFbo == -1) {
@@ -354,6 +391,66 @@ public final class FinalCloudCompositeHandler {
         GL30.glDrawBuffer(0);
         GL30.glReadBuffer(0);
         GL30.glBindFramebuffer(36160, 0);
+    }
+
+    private static int getDepthAttachmentFormat(int fbo) {
+        if (fbo <= 0) {
+            return 0;
+        }
+        int prevFbo = GL11.glGetInteger(36006);
+        GL30.glBindFramebuffer(36160, fbo);
+        int attachmentType = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36048);
+        int format = 0;
+        if (attachmentType == 36161) {
+            int renderbuffer = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
+            if (renderbuffer > 0) {
+                int prevRbo = GL11.glGetInteger(36161);
+                GL30.glBindRenderbuffer(36161, renderbuffer);
+                format = GL30.glGetRenderbufferParameteri(36161, 36164);
+                GL30.glBindRenderbuffer(36161, prevRbo);
+            }
+        } else if (attachmentType == 5890) {
+            int texName = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
+            int level = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36050);
+            if (texName > 0) {
+                int prevTex = GL11.glGetInteger(32873);
+                GL11.glBindTexture(3553, texName);
+                format = GL11.glGetTexLevelParameteri(3553, level, 4099);
+                GL11.glBindTexture(3553, prevTex);
+            }
+        }
+        GL30.glBindFramebuffer(36160, prevFbo);
+        return format;
+    }
+
+    private static DepthFormatInfo toDepthFormatInfo(int internalFormat) {
+        switch (internalFormat) {
+            case 33189:
+                return new DepthFormatInfo(33189, 6402, 5123);
+            case 33190:
+            case 33191:
+                return new DepthFormatInfo(internalFormat, 6402, 5125);
+            case 36012:
+                return new DepthFormatInfo(36012, 6402, 5126);
+            case 35056:
+                return new DepthFormatInfo(35056, 34041, 34042);
+            case 36013:
+                return new DepthFormatInfo(36013, 34041, 36269);
+            default:
+                return internalFormat == 0 ? null : new DepthFormatInfo(internalFormat, 6402, 5126);
+        }
+    }
+
+    private static final class DepthFormatInfo {
+        final int internalFormat;
+        final int format;
+        final int type;
+
+        DepthFormatInfo(int internalFormat, int format, int type) {
+            this.internalFormat = internalFormat;
+            this.format = format;
+            this.type = type;
+        }
     }
 
     private static void maybeLogDepthChoice(int sampledSceneDepthTex, int attachedDepthTex, int cloudDepthTex, int w, int h) {

@@ -118,7 +118,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         transparencyTarget.clear(Minecraft.ON_OSX);
         RenderTarget mainTarget = mc.getMainRenderTarget();
         // Capture vanilla depth now (pre-shader) for final composite occlusion.
+        FinalCloudCompositeHandler.beginDistantHorizonsDepthAccess(dhFbo);
         FinalCloudCompositeHandler.captureDepth(mainTarget);
+        FinalCloudCompositeHandler.endDistantHorizonsDepthAccess();
         boolean reverseDepth = isReverseDepthEnabled();
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
         int dhDepthTex = resolveDepthTextureId(dhFbo);
