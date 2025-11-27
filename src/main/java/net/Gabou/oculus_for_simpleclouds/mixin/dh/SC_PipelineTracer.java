@@ -6,6 +6,7 @@ import dev.nonamecrackers2.simpleclouds.client.event.impl.DetermineCloudRenderPi
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
 import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareDhPipeline;
+import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareNoDhPipeline;
 import net.minecraftforge.common.MinecraftForge;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.joml.Matrix4f;
@@ -39,7 +40,7 @@ public abstract class SC_PipelineTracer {
     private DetermineCloudRenderPipelineEvent ofsc_replaceEvent(CloudsRenderPipeline ignored) {
         CloudsRenderPipeline pipeline;
         if (CompatHelper.areShadersRunning()) {
-            pipeline = SimpleCloudsMod.dhLoaded() ? ShaderAwareDhPipeline.INSTANCE : ShaderAwareDhPipeline.INSTANCE;
+            pipeline = SimpleCloudsMod.dhLoaded() ? ShaderAwareDhPipeline.INSTANCE : ShaderAwareNoDhPipeline.INSTANCE;
         } else {
             pipeline = CloudsRenderPipeline.DEFAULT;
         }
