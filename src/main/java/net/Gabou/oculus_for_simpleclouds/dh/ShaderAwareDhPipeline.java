@@ -119,9 +119,13 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         RenderTarget mainTarget = mc.getMainRenderTarget();
         // Capture vanilla depth now (pre-shader) for final composite occlusion.
         FinalCloudCompositeHandler.captureDepth(mainTarget);
+        boolean reverseDepth = isReverseDepthEnabled();
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
         int dhDepthTex = resolveDepthTextureId(dhFbo);
-        boolean mergedDh = dhDepthTex > 0 && mergeDhDepthIntoCloudDepth(cloudTarget, dhFbo);
+        boolean mergedDh = dhDepthTex > 0 && mergeDhDepthIntoCloudDepth(cloudTarget, dhFbo, reverseDepth);
+        if (dhDepthTex > 0) {
+            FinalCloudCompositeHandler.mergeDistantHorizonsDepth(dhDepthTex, reverseDepth);
+        }
         debug(String.format(
                 "DH shader pass: copiedVanilla=%s dhDepthTex=%d mergedDh=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
                 copiedVanillaDepth, dhDepthTex, mergedDh, cloudTarget.getDepthTextureId(),
@@ -283,7 +287,7 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
      * Merge the DH depth attachment into the cloud target's existing depth buffer.
      * The cloud target is expected to already contain vanilla depth.
      */
-    private static boolean mergeDhDepthIntoCloudDepth(RenderTarget cloudTarget, int dhFbo) {
+    private static boolean mergeDhDepthIntoCloudDepth(RenderTarget cloudTarget, int dhFbo, boolean reverseDepth) {
         int dhDepthTex = resolveDepthTextureId(dhFbo);
         if (dhDepthTex <= 0) {
             return false;
@@ -304,7 +308,7 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthMask(true);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthFunc(reverseDepth ? GL11.GL_GEQUAL : GL11.GL_LEQUAL);
         GL11.glColorMask(false, false, false, false);
 
         GL20.glUseProgram(depthMergeProgram);
@@ -398,6 +402,11 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     private static int depthMergeProgram = -1;
     private static int depthMergeVao = -1;
     private static int depthMergeVbo = -1;
+
+    private static boolean isReverseDepthEnabled() {
+        int depthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+        return depthFunc == GL11.GL_GEQUAL || depthFunc == GL11.GL_GREATER;
+    }
     private static int depthMergeSamplerLoc = -1;
 
     /**
