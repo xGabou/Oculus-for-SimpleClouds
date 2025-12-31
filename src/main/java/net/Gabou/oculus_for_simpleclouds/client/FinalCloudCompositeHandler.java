@@ -47,6 +47,10 @@ public final class FinalCloudCompositeHandler {
     private static long lastDepthLogMs = 0L;
     private static boolean capturedThisFrame = false;
     private static boolean reverseDepthDetected = false;
+    private static int combinedSceneDepthTex = -1;
+    private static int combinedW = -1;
+    private static int combinedH = -1;
+    private static boolean combinedValidThisFrame = false;
 
     private FinalCloudCompositeHandler() {
     }
@@ -57,12 +61,14 @@ public final class FinalCloudCompositeHandler {
             if (event.getStage() == Stage.AFTER_LEVEL) {
                 compositeClouds();
                 capturedThisFrame = false;
+                combinedValidThisFrame = false;
             }
 
         }
     }
 
     public static void captureDepth(RenderTarget source) {
+        combinedValidThisFrame = false;
         if (source != null) {
             int w = source.width;
             int h = source.height;
@@ -99,6 +105,34 @@ public final class FinalCloudCompositeHandler {
         }
     }
 
+    /**
+     * Called by the DH shader-aware pipeline to provide a pre-merged depth texture
+     * that already includes both vanilla and DH depth. When set, this texture is
+     * preferred by the composite pass for depth testing.
+     */
+    public static void setCombinedSceneDepthTex(int tex, int w, int h) {
+        combinedSceneDepthTex = tex;
+        combinedW = w;
+        combinedH = h;
+        combinedValidThisFrame = tex > 0 && w > 0 && h > 0;
+    }
+
+    public static int getCapturedSceneDepthTex() {
+        return capturedSceneDepthTex;
+    }
+
+    public static int getExternalSceneDepthTex() {
+        return externalSceneDepthTex;
+    }
+
+    public static int getCapturedW() {
+        return capturedW;
+    }
+
+    public static int getCapturedH() {
+        return capturedH;
+    }
+
     private static void compositeClouds() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level != null) {
@@ -122,7 +156,9 @@ public final class FinalCloudCompositeHandler {
                                 GL30.glBindFramebuffer(36160, mainFbo);
                                 GL11.glViewport(0, 0, windowW, windowH);
                                 boolean depthAttachmentOk = false;
-                                int depthTex = externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex;
+                                int depthTex = combinedValidThisFrame && combinedSceneDepthTex > 0
+                                        ? combinedSceneDepthTex
+                                        : (externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex);
                                 if (depthTex > 0) {
                                     GL30.glFramebufferTexture2D(36160, 36096, 3553, depthTex, 0);
                                     int status = GL30.glCheckFramebufferStatus(36160);
