@@ -380,8 +380,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             if (rbName > 0) {
                 int prevRb = GL11.glGetInteger(GL30.GL_RENDERBUFFER_BINDING);
                 GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, rbName);
-                int w = GL11.glGetInteger(GL11.GL_RENDERBUFFER_WIDTH);
-                int h = GL11.glGetInteger(GL11.GL_RENDERBUFFER_HEIGHT);
+                int w = GL30.glGetRenderbufferParameteri(GL30.GL_RENDERBUFFER, GL30.GL_RENDERBUFFER_WIDTH);
+                int h = GL30.glGetRenderbufferParameteri(GL30.GL_RENDERBUFFER, GL30.GL_RENDERBUFFER_HEIGHT);
                 if (w <= 0 || h <= 0) {
                     w = fallbackW;
                     h = fallbackH;

@@ -171,7 +171,7 @@ dependencies {
     implementation fg.deobf("nonamecrackers2:crackerslib-forge:${crackerslib_version}")
     implementation fg.deobf("nonamecrackers2:simplecloudsapi-forge:${api_version}")
     implementation fg.deobf("curse.maven:chloride-931925:6615986")
-    compileOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
+    implementation fg.deobf("curse.maven:distant-horizons-508933:7104610")
     //runtimeOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
     compileOnly fg.deobf("curse.maven:oculus-for-simpleclouds-1386686:7258925")
     implementation fg.deobf("curse.maven:immersive-engineering-231951:6206989")
@@ -232,48 +232,70 @@ tasks.named('jar', Jar).configure {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
-modrinth {
-    token = System.getenv("MODRINTH_TOKEN")
-    projectId = "8WzyyTkv" // from your Modrinth project URL
-    versionNumber = "Forge-${project.version}"
-    versionName = "Oculus for SimpleClouds ${mod_version}"
-    changelog = rootProject.file("IRISSCchangelog.md").text
-    gameVersions = ["1.20.1"]
-    loaders = ["forge"]
-    versionType = "beta"
-    dependencies {
-        required.project "GchcoXML"
-        optional.project "qIWoLcKJ"
-        required.project "LtZfKhel"
-        required.project "N8aGZtvj"
-    }
-    uploadFile = file("build/libs/${archivesBaseName}-${version}.jar")
-}
-curseforge {
-    apiKey = System.getenv("CURSEFORGE_TOKEN")
+def modrinthToken = System.getenv("MODRINTH_TOKEN")
+def curseforgeToken = System.getenv("CURSEFORGE_TOKEN")
 
-    project {
-        id = "1386686"
-        changelog = rootProject.file("IRISSCchangelog.md")
-        releaseType = "beta" // options: alpha, beta, release
-        addGameVersion "1.20.1"
-        addGameVersion "Forge"
-        mainArtifact(file("build/libs/${archivesBaseName}-${version}.jar")) {
-            displayName = "Forge-${version}"
+if (modrinthToken != null && !modrinthToken.isBlank()) {
+    modrinth {
+        token = modrinthToken
+        projectId = "8WzyyTkv"
+        versionNumber = "Forge-${project.version}"
+        versionName = "Oculus for SimpleClouds ${mod_version}"
+        changelog = rootProject.file("IRISSCchangelog.md").text
+        gameVersions = ["1.20.1"]
+        loaders = ["forge"]
+        versionType = "beta"
+
+        dependencies {
+            required.project "GchcoXML"
+            optional.project "qIWoLcKJ"
+            required.project "LtZfKhel"
+            required.project "N8aGZtvj"
+        }
+
+        uploadFile = file("build/libs/${archivesBaseName}-${version}.jar")
+    }
+} else {
+    logger.lifecycle("MODRINTH_TOKEN not set, Modrinth publishing disabled.")
+}
+
+if (curseforgeToken != null && !curseforgeToken.isBlank()) {
+    curseforge {
+        apiKey = curseforgeToken
+
+        project {
+            id = "1386686"
+            changelog = rootProject.file("IRISSCchangelog.md")
+            releaseType = "beta"
+            addGameVersion "1.20.1"
+            addGameVersion "Forge"
+
+            mainArtifact(file("build/libs/${archivesBaseName}-${version}.jar")) {
+                displayName = "Forge-${version}"
+            }
         }
     }
+} else {
+    logger.lifecycle("CURSEFORGE_TOKEN not set, CurseForge publishing disabled.")
 }
 import groovy.json.JsonOutput
+import groovy.json.JsonOutput
+
 tasks.register("discordWebhook") {
+    onlyIf {
+        def url = System.getenv("DISCORD_WEBHOOK_URL")
+        return url != null && !url.isBlank()
+    }
+
     doLast {
         def webhookUrl = System.getenv("DISCORD_WEBHOOK_URL")
         def changelogText = rootProject.file("IRISSCchangelog.md").text
 
         def payload = [
                 username: "Build Bot",
-                allowed_mentions: [ parse: ["roles"] ],
+                allowed_mentions: [parse: ["roles"]],
                 content: "**New release published!** 🎉\n" +
-                        "<@&1440208473949208577>\n" + // role mention
+                        "<@&1440208473949208577>\n" +
                         "Project: ${mod_name}\n" +
                         "Version: v${project.mod_version}-1.20.1\n\n" +
                         "${changelogText.take(1891)}"
@@ -290,3 +312,4 @@ tasks.register("discordWebhook") {
         }
     }
 }
+
