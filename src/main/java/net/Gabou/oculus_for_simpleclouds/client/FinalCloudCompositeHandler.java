@@ -162,6 +162,7 @@ public final class FinalCloudCompositeHandler {
                                 int depthW = combinedValidThisFrame && combinedSceneDepthTex > 0 ? combinedW : capturedW;
                                 int depthH = combinedValidThisFrame && combinedSceneDepthTex > 0 ? combinedH : capturedH;
                                 if (depthTex > 0 && depthW == targetW && depthH == targetH) {
+
                                     GL30.glFramebufferTexture2D(36160, 36096, 3553, depthTex, 0);
                                     int status = GL30.glCheckFramebufferStatus(36160);
                                     depthAttachmentOk = status == 36053;
