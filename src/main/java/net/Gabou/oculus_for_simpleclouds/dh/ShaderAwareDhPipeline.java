@@ -32,6 +32,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL12;
 
 import java.nio.IntBuffer;
 
@@ -47,6 +48,19 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     private static String lastDebugMsg = "";
     private static boolean warnedZeroVerts = false;
     public static final boolean DEBUG_BLIT_CLOUD_TARGET = Boolean.getBoolean("ofsc.debug.blitClouds");
+    private static int depthMergeDhCopyTex = -1;
+    private static int depthMergeDhCopyW = -1;
+    private static int depthMergeDhCopyH = -1;
+    private static int combinedDepthTex = -1;
+    private static int combinedDepthFbo = -1;
+    private static int combinedDepthW = -1;
+    private static int combinedDepthH = -1;
+    private static int depthCombineProgram = -1;
+    private static int depthCombineVao = -1;
+    private static int depthCombineVbo = -1;
+    private static int depthCombineDhSamplerLoc = -1;
+    private static int depthCombineBaseSamplerLoc = -1;
+    private static int depthCombineReverseLoc = -1;
 
     private ShaderAwareDhPipeline() {
     }
@@ -120,8 +134,31 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         // Capture vanilla depth now (pre-shader) for final composite occlusion.
         FinalCloudCompositeHandler.captureDepth(mainTarget);
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
-        int dhDepthTex = resolveDepthTextureId(dhFbo);
+        int vanillaDepthTex = FinalCloudCompositeHandler.getExternalSceneDepthTex();
+        if (vanillaDepthTex <= 0) {
+            vanillaDepthTex = FinalCloudCompositeHandler.getCapturedSceneDepthTex();
+        }
+        int vanillaW = FinalCloudCompositeHandler.getCapturedW();
+        int vanillaH = FinalCloudCompositeHandler.getCapturedH();
+        int targetW = mc.getMainRenderTarget() != null ? mc.getMainRenderTarget().width : vanillaW;
+        int targetH = mc.getMainRenderTarget() != null ? mc.getMainRenderTarget().height : vanillaH;
+        int dhDepthTex = resolveDepthAttachmentAsTexture(dhFbo, vanillaW > 0 ? vanillaW : cloudTarget.width, vanillaH > 0 ? vanillaH : cloudTarget.height);
         boolean mergedDh = dhDepthTex > 0 && mergeDhDepthIntoCloudDepth(cloudTarget, dhFbo);
+        if (dhDepthTex > 0 && vanillaDepthTex > 0) {
+            int combinedTex = mergeDepthForComposite(dhDepthTex, vanillaDepthTex,
+                    targetW > 0 ? targetW : vanillaW > 0 ? vanillaW : cloudTarget.width,
+                    targetH > 0 ? targetH : vanillaH > 0 ? vanillaH : cloudTarget.height,
+                    detectReverseDepth());
+            if (combinedTex > 0) {
+                FinalCloudCompositeHandler.setCombinedSceneDepthTex(combinedTex,
+                        targetW > 0 ? targetW : vanillaW > 0 ? vanillaW : cloudTarget.width,
+                        targetH > 0 ? targetH : vanillaH > 0 ? vanillaH : cloudTarget.height);
+            }
+        } else if (vanillaDepthTex > 0) {
+            FinalCloudCompositeHandler.setCombinedSceneDepthTex(vanillaDepthTex,
+                    targetW > 0 ? targetW : vanillaW,
+                    targetH > 0 ? targetH : vanillaH);
+        }
         debug(String.format(
                 "DH shader pass: copiedVanilla=%s dhDepthTex=%d mergedDh=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
                 copiedVanillaDepth, dhDepthTex, mergedDh, cloudTarget.getDepthTextureId(),
@@ -279,12 +316,18 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         return true;
     }
 
+    private static boolean detectReverseDepth() {
+        int depthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+        float depthClear = GL11.glGetFloat(GL11.GL_DEPTH_CLEAR_VALUE);
+        return depthFunc == GL11.GL_GEQUAL || depthFunc == GL11.GL_GREATER || depthClear < 0.5f;
+    }
+
     /**
      * Merge the DH depth attachment into the cloud target's existing depth buffer.
      * The cloud target is expected to already contain vanilla depth.
      */
     private static boolean mergeDhDepthIntoCloudDepth(RenderTarget cloudTarget, int dhFbo) {
-        int dhDepthTex = resolveDepthTextureId(dhFbo);
+        int dhDepthTex = resolveDepthAttachmentAsTexture(dhFbo, cloudTarget.width, cloudTarget.height);
         if (dhDepthTex <= 0) {
             return false;
         }
@@ -334,13 +377,37 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         return GlStateManager._getError() == GL11.GL_NO_ERROR;
     }
 
-    private static int resolveDepthTextureId(int fbo) {
+    private static int resolveDepthAttachmentAsTexture(int fbo, int fallbackW, int fallbackH) {
         int previousFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
         int attachmentType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        int depthName = attachmentType == GL11.GL_TEXTURE
-                ? GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME)
-                : -1;
+        int depthName = -1;
+        if (attachmentType == GL11.GL_TEXTURE) {
+            depthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+        } else if (attachmentType == GL30.GL_RENDERBUFFER) {
+            int rbName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+            if (rbName > 0) {
+                int prevRb = GL11.glGetInteger(GL30.GL_RENDERBUFFER_BINDING);
+                GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, rbName);
+                int w = GL11.glGetInteger(GL11.GL_RENDERBUFFER_WIDTH);
+                int h = GL11.glGetInteger(GL11.GL_RENDERBUFFER_HEIGHT);
+                if (w <= 0 || h <= 0) {
+                    w = fallbackW;
+                    h = fallbackH;
+                }
+                ensureDhDepthCopyTexture(w, h);
+                int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+                int prevReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, fbo);
+                GL11.glReadBuffer(GL11.GL_NONE);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthMergeDhCopyTex);
+                GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+                GL11.glReadBuffer(prevReadBuffer);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, prevRb);
+                depthName = depthMergeDhCopyTex;
+            }
+        }
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFbo);
         return depthName;
     }
@@ -399,6 +466,165 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     private static int depthMergeVao = -1;
     private static int depthMergeVbo = -1;
     private static int depthMergeSamplerLoc = -1;
+
+    /**
+     * Create a merged depth texture that combines vanilla (base) depth and DH depth
+     * for use during the final composite stage.
+     */
+    private static int mergeDepthForComposite(int dhDepthTex, int baseDepthTex, int w, int h, boolean reverseDepth) {
+        if (dhDepthTex <= 0 || baseDepthTex <= 0) {
+            return -1;
+        }
+        if (!ensureDepthCombineProgram() || !ensureCombinedDepthTarget(w, h)) {
+            return -1;
+        }
+
+        int previousFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        IntBuffer viewport = BufferUtils.createIntBuffer(4);
+        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+        boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
+        GL11.glViewport(0, 0, w, h);
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(true);
+        GL11.glDepthFunc(GL11.GL_ALWAYS);
+        GL11.glColorMask(false, false, false, false);
+
+        GL20.glUseProgram(depthCombineProgram);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, dhDepthTex);
+        if (depthCombineDhSamplerLoc >= 0) {
+            GL20.glUniform1i(depthCombineDhSamplerLoc, 0);
+        }
+        GL13.glActiveTexture(GL13.GL_TEXTURE1);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, baseDepthTex);
+        if (depthCombineBaseSamplerLoc >= 0) {
+            GL20.glUniform1i(depthCombineBaseSamplerLoc, 1);
+        }
+        if (depthCombineReverseLoc >= 0) {
+            GL20.glUniform1i(depthCombineReverseLoc, reverseDepth ? 1 : 0);
+        }
+
+        GL30.glBindVertexArray(depthCombineVao);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GL30.glBindVertexArray(0);
+
+        GL20.glUseProgram(0);
+        GL11.glColorMask(true, true, true, true);
+        GL11.glDepthFunc(prevDepthFunc);
+        GL11.glDepthMask(prevDepthMask);
+        if (!depthEnabled) {
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+        }
+        if (blendEnabled) {
+            GL11.glEnable(GL11.GL_BLEND);
+        } else {
+            GL11.glDisable(GL11.GL_BLEND);
+        }
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFbo);
+        GL11.glViewport(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
+        return combinedDepthTex;
+    }
+
+    private static boolean ensureDepthCombineProgram() {
+        if (depthCombineProgram != -1 && depthCombineVao != -1 && depthCombineVbo != -1) {
+            return true;
+        }
+        String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
+        String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uDhDepth;uniform sampler2D uBaseDepth;uniform int uReverse;void main(){float dh=texture(uDhDepth,vUv).r;float base=texture(uBaseDepth,vUv).r;float merged=uReverse==1?max(dh,base):min(dh,base);gl_FragDepth=merged;}";
+        int vert = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
+        GL20.glShaderSource(vert, vertexSrc);
+        GL20.glCompileShader(vert);
+        if (GL20.glGetShaderi(vert, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+            System.out.println("[OFSC WARN] Depth combine vertex shader compile failed: " + GL20.glGetShaderInfoLog(vert));
+            GL20.glDeleteShader(vert);
+            return false;
+        }
+        int frag = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
+        GL20.glShaderSource(frag, fragmentSrc);
+        GL20.glCompileShader(frag);
+        if (GL20.glGetShaderi(frag, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+            System.out.println("[OFSC WARN] Depth combine fragment shader compile failed: " + GL20.glGetShaderInfoLog(frag));
+            GL20.glDeleteShader(vert);
+            GL20.glDeleteShader(frag);
+            return false;
+        }
+
+        depthCombineProgram = GL20.glCreateProgram();
+        GL20.glAttachShader(depthCombineProgram, vert);
+        GL20.glAttachShader(depthCombineProgram, frag);
+        GL20.glLinkProgram(depthCombineProgram);
+        GL20.glDeleteShader(vert);
+        GL20.glDeleteShader(frag);
+        if (GL20.glGetProgrami(depthCombineProgram, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
+            System.out.println("[OFSC WARN] Depth combine program link failed: " + GL20.glGetProgramInfoLog(depthCombineProgram));
+            GL20.glDeleteProgram(depthCombineProgram);
+            depthCombineProgram = -1;
+            return false;
+        }
+
+        depthCombineDhSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uDhDepth");
+        depthCombineBaseSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uBaseDepth");
+        depthCombineReverseLoc = GL20.glGetUniformLocation(depthCombineProgram, "uReverse");
+        depthCombineVao = GL30.glGenVertexArrays();
+        depthCombineVbo = GL15.glGenBuffers();
+        GL30.glBindVertexArray(depthCombineVao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, depthCombineVbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, new float[]{-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f}, GL15.GL_STATIC_DRAW);
+        int posLoc = GL20.glGetAttribLocation(depthCombineProgram, "aPos");
+        GL20.glEnableVertexAttribArray(posLoc);
+        GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
+        GL30.glBindVertexArray(0);
+        return true;
+    }
+
+    private static boolean ensureCombinedDepthTarget(int w, int h) {
+        if (combinedDepthTex == -1) {
+            combinedDepthTex = GL11.glGenTextures();
+        }
+        if (combinedDepthFbo == -1) {
+            combinedDepthFbo = GL30.glGenFramebuffers();
+        }
+        if (w != combinedDepthW || h != combinedDepthH) {
+            combinedDepthW = w;
+            combinedDepthH = h;
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, combinedDepthTex);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F, w, h, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
+        }
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
+        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, combinedDepthTex, 0);
+        GL11.glDrawBuffer(GL11.GL_NONE);
+        GL11.glReadBuffer(GL11.GL_NONE);
+        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        return status == GL30.GL_FRAMEBUFFER_COMPLETE;
+    }
+
+    private static void ensureDhDepthCopyTexture(int w, int h) {
+        if (depthMergeDhCopyTex == -1) {
+            depthMergeDhCopyTex = GL11.glGenTextures();
+        }
+        if (w != depthMergeDhCopyW || h != depthMergeDhCopyH) {
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthMergeDhCopyTex);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F, w, h, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
+            depthMergeDhCopyW = w;
+            depthMergeDhCopyH = h;
+        }
+    }
+
 
     /**
      * Copy vanilla depth into the cloud target using copyTexSubImage to avoid
