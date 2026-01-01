@@ -140,15 +140,24 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         }
         int vanillaW = FinalCloudCompositeHandler.getCapturedW();
         int vanillaH = FinalCloudCompositeHandler.getCapturedH();
+        int targetW = mc.getMainRenderTarget() != null ? mc.getMainRenderTarget().width : vanillaW;
+        int targetH = mc.getMainRenderTarget() != null ? mc.getMainRenderTarget().height : vanillaH;
         int dhDepthTex = resolveDepthAttachmentAsTexture(dhFbo, vanillaW > 0 ? vanillaW : cloudTarget.width, vanillaH > 0 ? vanillaH : cloudTarget.height);
         boolean mergedDh = dhDepthTex > 0 && mergeDhDepthIntoCloudDepth(cloudTarget, dhFbo);
         if (dhDepthTex > 0 && vanillaDepthTex > 0) {
-            int combinedTex = mergeDepthForComposite(dhDepthTex, vanillaDepthTex, vanillaW > 0 ? vanillaW : cloudTarget.width, vanillaH > 0 ? vanillaH : cloudTarget.height, detectReverseDepth());
+            int combinedTex = mergeDepthForComposite(dhDepthTex, vanillaDepthTex,
+                    targetW > 0 ? targetW : vanillaW > 0 ? vanillaW : cloudTarget.width,
+                    targetH > 0 ? targetH : vanillaH > 0 ? vanillaH : cloudTarget.height,
+                    detectReverseDepth());
             if (combinedTex > 0) {
-                FinalCloudCompositeHandler.setCombinedSceneDepthTex(combinedTex, vanillaW > 0 ? vanillaW : cloudTarget.width, vanillaH > 0 ? vanillaH : cloudTarget.height);
+                FinalCloudCompositeHandler.setCombinedSceneDepthTex(combinedTex,
+                        targetW > 0 ? targetW : vanillaW > 0 ? vanillaW : cloudTarget.width,
+                        targetH > 0 ? targetH : vanillaH > 0 ? vanillaH : cloudTarget.height);
             }
         } else if (vanillaDepthTex > 0) {
-            FinalCloudCompositeHandler.setCombinedSceneDepthTex(vanillaDepthTex, vanillaW, vanillaH);
+            FinalCloudCompositeHandler.setCombinedSceneDepthTex(vanillaDepthTex,
+                    targetW > 0 ? targetW : vanillaW,
+                    targetH > 0 ? targetH : vanillaH);
         }
         debug(String.format(
                 "DH shader pass: copiedVanilla=%s dhDepthTex=%d mergedDh=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
