@@ -155,6 +155,7 @@ public final class FinalCloudCompositeHandler {
                                 int originalDepthTex = mc.getMainRenderTarget().getDepthTextureId();
                                 GL30.glBindFramebuffer(36160, mainFbo);
                                 GL11.glViewport(0, 0, targetW, targetH);
+                                reverseDepthDetected = detectReverseDepth();
                                 boolean depthAttachmentOk = false;
                                 int depthTex = combinedValidThisFrame && combinedSceneDepthTex > 0
                                         ? combinedSceneDepthTex
@@ -233,7 +234,7 @@ public final class FinalCloudCompositeHandler {
             return true;
         } else {
             String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
-            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uCloudColor;uniform sampler2D uCloudDepth;uniform sampler2D uSceneDepth;uniform float uBias;uniform int uReverse;out vec4 fragColor;void main(){float cloudD=texture(uCloudDepth,vUv).r;float sceneD=texture(uSceneDepth,vUv).r;if(cloudD<=0.0||cloudD>=1.0){discard;}if(sceneD<0.999){discard;}gl_FragDepth = cloudD - uBias;fragColor=texture(uCloudColor,vUv);}";
+            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uCloudColor;uniform sampler2D uCloudDepth;uniform sampler2D uSceneDepth;uniform float uBias;uniform int uReverse;out vec4 fragColor;void main(){float cloudD=texture(uCloudDepth,vUv).r;float sceneD=texture(uSceneDepth,vUv).r;if(uReverse==1){if(cloudD<=0.0){discard;}}else{if(cloudD>=1.0){discard;}}if(uReverse==1){if(cloudD<sceneD-uBias){discard;}}else{if(cloudD>sceneD+uBias){discard;}}gl_FragDepth = cloudD;fragColor=texture(uCloudColor,vUv);}";
             int vert = GL20.glCreateShader(35633);
             GL20.glShaderSource(vert, vertexSrc);
             GL20.glCompileShader(vert);
@@ -350,5 +351,11 @@ public final class FinalCloudCompositeHandler {
                 return -1.0F;
             }
         }
+    }
+
+    private static boolean detectReverseDepth() {
+        int depthFunc = GL11.glGetInteger(2932);
+        float depthClear = GL11.glGetFloat(2931);
+        return depthFunc == 518 || depthFunc == 516 || depthClear < 0.5F;
     }
 }

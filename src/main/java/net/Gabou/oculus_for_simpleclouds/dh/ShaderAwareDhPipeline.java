@@ -341,13 +341,16 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
         boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
         boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+        boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        boolean reverseDepth = detectReverseDepth();
 
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
         GL11.glViewport(0, 0, cloudTarget.width, cloudTarget.height);
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthMask(true);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthFunc(reverseDepth ? GL11.GL_GEQUAL : GL11.GL_LEQUAL);
         GL11.glColorMask(false, false, false, false);
 
         GL20.glUseProgram(depthMergeProgram);
@@ -363,7 +366,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
 
         GL20.glUseProgram(0);
         GL11.glColorMask(true, true, true, true);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthFunc(prevDepthFunc);
+        GL11.glDepthMask(prevDepthMask);
         if (!depthEnabled) {
             GL11.glDisable(GL11.GL_DEPTH_TEST);
         }
