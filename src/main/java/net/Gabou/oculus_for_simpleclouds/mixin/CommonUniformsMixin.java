@@ -65,6 +65,19 @@ public class CommonUniformsMixin {
                         .orElse(0)
         );
 
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_Time",
+                () -> {
+                    Minecraft client = Minecraft.getInstance();
+                    if (client.level == null) {
+                        return 0.0f;
+                    }
+                    float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
+                    return (float) client.level.getGameTime() + tickDelta;
+                }
+        );
+
 
     }
 

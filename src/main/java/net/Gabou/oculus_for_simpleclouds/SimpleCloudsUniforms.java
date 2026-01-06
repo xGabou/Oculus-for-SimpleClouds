@@ -222,7 +222,8 @@ public final class SimpleCloudsUniforms {
             ensureTexture();
             long now = System.currentTimeMillis();
             if (!valid || now - lastUploadMs >= UPDATE_INTERVAL_MS) {
-                if (!upload(managerOpt.get(), mc.gameRenderer.getMainCamera().getPosition())) {
+                float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
+                if (!upload(managerOpt.get(), mc.gameRenderer.getMainCamera().getPosition(), tickDelta)) {
                     valid = false;
                     return Optional.empty();
                 }
@@ -248,16 +249,18 @@ public final class SimpleCloudsUniforms {
             GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, 0);
         }
 
-        private static boolean upload(CloudManager<ClientLevel> manager, Vec3 camera) {
+        private static boolean upload(CloudManager<ClientLevel> manager, Vec3 camera, float tickDelta) {
             List<CloudRegion> regions = manager.getClouds();
             if (regions.isEmpty()) {
                 return false;
             }
             FloatBuffer buffer = BUFFER;
             buffer.clear();
+            float scrollX = manager.getScrollX(tickDelta);
+            float scrollZ = manager.getScrollZ(tickDelta);
             float halfSpan = SAMPLE_SPAN * 0.5f;
-            float startX = (float) camera.x - halfSpan;
-            float startZ = (float) camera.z - halfSpan;
+            float startX = (float) camera.x - halfSpan + scrollX;
+            float startZ = (float) camera.z - halfSpan + scrollZ;
             float step = SAMPLE_SPAN / GRID_RESOLUTION;
             for (int z = 0; z < GRID_RESOLUTION; z++) {
                 float sampleZ = startZ + z * step;

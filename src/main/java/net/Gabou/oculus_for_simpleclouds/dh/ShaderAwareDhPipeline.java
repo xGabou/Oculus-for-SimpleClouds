@@ -218,7 +218,10 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         if (generator.transparencyEnabled()) {
             renderer.copyDepthFromCloudsToTransparency();
             transparencyTarget.bindWrite(false);
+            boolean depthMaskBeforeTransparent = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+            GL11.glDepthMask(false);
             SimpleCloudsRenderer.renderCloudsTransparency(generator, stack, projMat, renderer.getFogStart(), renderer.getFogEnd(), partialTick, cloudR, cloudG, cloudB, ((Boolean) SimpleCloudsConfig.CLIENT.frustumCulling.get()).booleanValue() ? frustum : null);
+            GL11.glDepthMask(depthMaskBeforeTransparent);
         }
         p.pop();
         stack.popPose();
