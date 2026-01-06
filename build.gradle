@@ -172,11 +172,12 @@ dependencies {
     implementation fg.deobf("nonamecrackers2:simplecloudsapi-forge:${api_version}")
     implementation fg.deobf("curse.maven:chloride-931925:6615986")
     compileOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
-    //runtimeOnly fg.deobf("curse.maven:alexs-caves-924854:5848216")
-    //runtimeOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
+    runtimeOnly fg.deobf("curse.maven:alexs-caves-924854:5848216")
+    runtimeOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
     compileOnly fg.deobf("curse.maven:oculus-for-simpleclouds-1386686:7258925")
     compileOnly fg.deobf("curse.maven:immersive-engineering-231951:6206989")
-    //runtimeOnly fg.deobf("curse.maven:citadel-331936:6702068")
+    runtimeOnly fg.deobf("curse.maven:immersive-engineering-231951:6206989")
+    runtimeOnly fg.deobf("curse.maven:citadel-331936:6702068")
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
