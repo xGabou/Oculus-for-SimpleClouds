@@ -33,6 +33,16 @@ SimpleClouds clouds are not world blocks. They are a screen space layer, so rayc
 Currently I use storminess and fade values to darken the world and fake the effect.  
 Real cloud shadows remain a long term goal.
 
+
+### ❓ I have an issue but the Issues tab isn’t there
+
+Yes, that’s intended. I don’t read issues here, so the GitHub issues tab has been disabled.  
+It’s simply easier for me to track everything in **one place** for all my mods.
+
+It’s not that I dislike GitHub issues, and honestly, if I had the choice, I would’ve kept them enabled.  
+But not everyone is comfortable with how GitHub works, so to make support more accessible for everyone, I use **Discord instead**.
+
+
 ---
 
 ## **What this addon does**

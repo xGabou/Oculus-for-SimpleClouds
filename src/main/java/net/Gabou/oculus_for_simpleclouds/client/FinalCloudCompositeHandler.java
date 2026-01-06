@@ -157,8 +157,8 @@ public final class FinalCloudCompositeHandler {
             if (capturedThisFrame && capturedSceneDepthTex > 0 && capturedW > 0 && capturedH > 0) {
                 SimpleCloudsRenderer.getOptionalInstance().ifPresent((renderer) -> {
                     if (renderer.getCloudTarget() != null) {
-                        int windowW = mc.getWindow().getWidth();
-                        int windowH = mc.getWindow().getHeight();
+                        int targetW = mc.getMainRenderTarget().width;
+                        int targetH = mc.getMainRenderTarget().height;
                         int cloudColorTex = renderer.getCloudTarget().getColorTextureId();
                         int cloudDepthTex = renderer.getCloudTarget().getDepthTextureId();
                         if (cloudColorTex > 0 && cloudDepthTex > 0) {
