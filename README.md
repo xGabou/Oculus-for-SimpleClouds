@@ -40,7 +40,8 @@ Yes, that’s intended. I don’t read issues here, so the GitHub issues tab has
 It’s simply easier for me to track everything in **one place** for all my mods.
 
 It’s not that I dislike GitHub issues, and honestly, if I had the choice, I would’ve kept them enabled.  
-But not everyone is comfortable with how GitHub works, so to make support more accessible for everyone, I use **Discord instead**.
+But not everyone is comfortable with how GitHub works, so to make support more accessible for everyone, I use **Discord instead**: [https://discord.gg/2jRhTJgYz4](https://discord.gg/2jRhTJgYz4)
+
 
 
 ---
