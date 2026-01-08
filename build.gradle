@@ -172,7 +172,7 @@ dependencies {
     implementation fg.deobf("nonamecrackers2:simplecloudsapi-forge:${api_version}")
     implementation fg.deobf("curse.maven:chloride-931925:6615986")
     compileOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
-    runtimeOnly fg.deobf("curse.maven:alexs-caves-924854:5848216")
+    //runtimeOnly fg.deobf("curse.maven:alexs-caves-924854:5848216")
     runtimeOnly fg.deobf("curse.maven:distant-horizons-508933:7104610")
     compileOnly fg.deobf("curse.maven:oculus-for-simpleclouds-1386686:7258925")
     compileOnly fg.deobf("curse.maven:immersive-engineering-231951:6206989")
