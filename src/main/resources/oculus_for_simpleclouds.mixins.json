@@ -9,7 +9,18 @@
   "client": [
     "CommonUniformsMixin",
     "ShaderPropertiesMixin",
-    "SimpleCloudsCompatHelperMixin"
+    "SimpleCloudsCompatHelperMixin",
+    "SimpleCloudsDepthCopyBypassMixin",
+    "SimpleCloudsCopyDepthGuardMixin",
+    "SimpleCloudsPipelineSelectMixin",
+    "SimpleCloudsForcePipelineMixin",
+    "dh.SimpleCloudsDhForgeEventsMixin",
+    "dh.SimpleCloudsBeforeDhRenderHandlerMixin",
+    "dh.SimpleCloudsAfterDhEventGuardMixin",
+    "SimpleCloudsNoUnsafeCopyMixin",
+    "dh.SimpleCloudsAfterDhRenderHandlerMixin",
+    "dh.SC_PipelineTracer",
+    "ShaderPackScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

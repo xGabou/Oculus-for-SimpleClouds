@@ -149,6 +149,8 @@ dependencies {
     implementation "nonamecrackers2:crackerslib-neoforge:${crackerslib_version}"
     implementation "nonamecrackers2:simplecloudsapi-neoforge:${api_version}"
     implementation "curse.maven:chloride-931925:6616326"
+    compileOnly "curse.maven:distant-horizons-508933:7375285"
+    runtimeOnly "curse.maven:distant-horizons-508933:7375285"
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

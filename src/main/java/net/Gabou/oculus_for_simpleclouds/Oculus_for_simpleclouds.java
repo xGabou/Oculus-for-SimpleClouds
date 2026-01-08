@@ -1,10 +1,12 @@
 package net.Gabou.oculus_for_simpleclouds;
 
 import com.mojang.logging.LogUtils;
+import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.slf4j.Logger;
 
@@ -25,8 +27,11 @@ public class Oculus_for_simpleclouds {
 
     }
     private void clientInit(FMLClientSetupEvent event) {
-        if (CompatHelper.isIrisLoaded() && !overWriteLogic) {
-            event.enqueueWork(SimpleCloudsIrisWeatherCompat::init);
-        }
+        event.enqueueWork(() -> {
+            NeoForge.EVENT_BUS.addListener(FinalCloudCompositeHandler::onRenderStage);
+            if (CompatHelper.isIrisLoaded() && !overWriteLogic) {
+                SimpleCloudsIrisWeatherCompat.init();
+            }
+        });
     }
 }
