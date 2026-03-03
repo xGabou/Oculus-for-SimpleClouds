@@ -1,48 +1,42 @@
 package net.Gabou.oculus_for_simpleclouds.mixin;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import dev.nonamecrackers2.simpleclouds.client.mesh.generator.CloudMeshGenerator;
-import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
-import dev.nonamecrackers2.simpleclouds.common.cloud.CloudType;
 import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
-import dev.nonamecrackers2.simpleclouds.common.noise.NoiseSettings;
 import dev.nonamecrackers2.simpleclouds.common.world.CloudManager;
+import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(value = SimpleCloudsRenderer.class, remap = false)
-public abstract class SimpleCloudsOpaqueInsideMixin {
+@Mixin(value = FinalCloudCompositeHandler.class, remap = false)
+public abstract class FinalCloudCompositeOpaqueInsideMixin {
 
-    @Inject(
-            method = "renderCloudsTransparency(Ldev/nonamecrackers2/simpleclouds/client/mesh/generator/CloudMeshGenerator;Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FFFFFFLnet/minecraft/client/renderer/culling/Frustum;Z)V",
-            at = @At("HEAD"),
-            cancellable = true
+    @Redirect(
+            method = "*",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/lwjgl/opengl/GL11;glBlendFunc(II)V"
+            ),
+            require = 0
     )
-    private static void oculus_for_simpleclouds$skipTransparencyWhenInsideCloud(
-            CloudMeshGenerator generator,
-            PoseStack stack,
-            Matrix4f projMat,
-            float fogStart,
-            float fogEnd,
-            float partialTick,
-            float r,
-            float g,
-            float b,
-            Frustum frustum,
-            boolean ditherFade,
-            CallbackInfo ci
-    ) {
+    private static void oculus_for_simpleclouds$forceOpaqueCompositeBlendWhenInsideCloud(int srcFactor, int dstFactor) {
         if (oculus_for_simpleclouds$isCameraInsideSimpleCloudVolume()) {
-            ci.cancel();
+            // Source replace: write cloud color directly instead of alpha blending.
+            GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ZERO);
+            return;
         }
+        GL11.glBlendFunc(srcFactor, dstFactor);
+    }
+
+    @Inject(method = "compositeClouds", at = @At("RETURN"))
+    private static void oculus_for_simpleclouds$restoreDefaultBlendFunc(CallbackInfo ci) {
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
     }
 
     @Unique
@@ -68,8 +62,7 @@ public abstract class SimpleCloudsOpaqueInsideMixin {
         if (cloudInfo == null || cloudInfo.getLeft() == null || cloudInfo.getLeft() == SimpleCloudsConstants.EMPTY) {
             return false;
         }
-
-        NoiseSettings noise = cloudInfo.getLeft().noiseConfig();
+        var noise = cloudInfo.getLeft().noiseConfig();
         if (noise == null) {
             return false;
         }
@@ -84,7 +77,6 @@ public abstract class SimpleCloudsOpaqueInsideMixin {
         float minCloudY = cloudBaseY + (float) startHeight * SimpleCloudsConstants.CLOUD_SCALE;
         float maxCloudY = cloudBaseY + (float) endHeight * SimpleCloudsConstants.CLOUD_SCALE;
         float cameraY = (float) cameraPos.y;
-        // Small padding avoids frame-to-frame flicker near cloud layer bounds.
         return cameraY >= minCloudY - 2.0F && cameraY <= maxCloudY + 2.0F;
     }
 }

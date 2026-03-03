@@ -5,8 +5,10 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "oculus_for_simpleclouds.refmap.json",
   "mixins": [
+    "CloudGeneratorDimensionWhitelistMixin"
   ],
   "client": [
+    "FinalCloudCompositeOpaqueInsideMixin",
     "CommonUniformsMixin",
     "ShaderPropertiesMixin",
     "SimpleCloudsCompatHelperMixin",
