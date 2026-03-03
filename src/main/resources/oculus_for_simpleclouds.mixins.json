@@ -12,6 +12,7 @@
     "SimpleCloudsCompatHelperMixin",
     "SimpleCloudsDepthCopyBypassMixin",
     "SimpleCloudsCopyDepthGuardMixin",
+    "SimpleCloudsOpaqueInsideMixin",
     "SimpleCloudsPipelineSelectMixin",
     "SimpleCloudsForcePipelineMixin",
     "dh.SimpleCloudsDhForgeEventsMixin",
