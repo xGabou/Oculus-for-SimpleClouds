@@ -140,6 +140,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         FinalCloudCompositeHandler.captureDepth(mainTarget);
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
         int vanillaDepthTex = FinalCloudCompositeHandler.getExternalSceneDepthTex();
+        if (vanillaDepthTex <= 0 && mainTarget != null) {
+            vanillaDepthTex = mainTarget.getDepthTextureId();
+        }
         if (vanillaDepthTex <= 0) {
             vanillaDepthTex = FinalCloudCompositeHandler.getCapturedSceneDepthTex();
         }
@@ -164,6 +167,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
                     targetW > 0 ? targetW : vanillaW,
                     targetH > 0 ? targetH : vanillaH);
         }
+        FinalCloudCompositeHandler.logDepthSnapshot("shader_dh_after_merge",
+                mainTarget == null ? -1 : mainTarget.getDepthTextureId(),
+                cloudTarget.getDepthTextureId());
         debug(String.format(
                 "DH shader pass: copiedVanilla=%s dhDepthTex=%d mergedDh=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
                 copiedVanillaDepth, dhDepthTex, mergedDh, cloudTarget.getDepthTextureId(),
@@ -405,12 +411,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
                 }
                 ensureDhDepthCopyTexture(w, h);
                 int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-                int prevReadBuffer = GL11.glGetInteger(GL11.GL_READ_BUFFER);
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, fbo);
-                GL11.glReadBuffer(GL11.GL_NONE);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, depthMergeDhCopyTex);
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
-                GL11.glReadBuffer(prevReadBuffer);
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
                 GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, prevRb);
                 depthName = depthMergeDhCopyTex;
@@ -693,7 +696,6 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, sourceFbo);
                 GL11.glViewport(0, 0, copyW, copyH);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, cloudDepthTex);
-                GL11.glReadBuffer(GL11.GL_NONE);
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, copyW, copyH);
             }
         }

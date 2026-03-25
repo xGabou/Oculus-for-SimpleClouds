@@ -11,12 +11,13 @@ import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -28,6 +29,7 @@ import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -44,16 +46,13 @@ public final class FinalCloudCompositeHandler {
     private static int locCloudColor = -1;
     private static int locCloudDepth = -1;
     private static int locSceneDepth = -1;
-    private static int locSceneDepth2 = -1;
     private static int locDepthBias = -1;
     private static int locReverseDepth = -1;
-    private static int locUseSceneDepth2 = -1;
     private static int externalSceneDepthTex = -1;
     private static int capturedSceneDepthTex = -1;
     private static int captureFbo = -1;
     private static int capturedW = -1;
     private static int capturedH = -1;
-    private static long lastDepthLogMs = 0L;
     private static boolean capturedThisFrame = false;
     private static boolean reverseDepthDetected = false;
     private static int combinedSceneDepthTex = -1;
@@ -72,6 +71,13 @@ public final class FinalCloudCompositeHandler {
     private static int mixDepthReverseLoc = -1;
     private static int mixDepthBiasLoc = -1;
     private static long mixDepthShaderTimestamp = -1L;
+    private static final boolean DEBUG_DEPTH_SNAPSHOTS = Boolean.getBoolean("ofsc.debug.depthSnapshots");
+    private static final Map<String, Long> depthStageLogMs = new HashMap<>();
+    private static int depthDebugSampleFbo = -1;
+    private static String lastDepthSelectionSource = "";
+    private static int lastDepthSelectionTex = -1;
+    private static String lastCaptureMode = "";
+    private static int lastCaptureTex = -1;
 
     private FinalCloudCompositeHandler() {
     }
@@ -90,38 +96,43 @@ public final class FinalCloudCompositeHandler {
 
     public static void captureDepth(RenderTarget source) {
         combinedValidThisFrame = false;
+        capturedThisFrame = false;
+        externalSceneDepthTex = -1;
         if (source != null) {
             int w = source.width;
             int h = source.height;
-            ensureSceneDepthTarget(w, h);
-            int prevReadFbo = GL11.glGetInteger(36010);
-            int prevDrawFbo = GL11.glGetInteger(36006);
+            if (!ensureSceneDepthTarget(w, h)) {
+                return;
+            }
+            int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+            int prevDrawFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
             int sourceFbo = ((MixinRenderTargetAccessor)source).simpleclouds$getFrameBufferId();
             if (sourceFbo > 0 && capturedSceneDepthTex > 0 && captureFbo > 0) {
-                GL30.glBindFramebuffer(36160, sourceFbo);
-                int attachmentType = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36048);
-                if (attachmentType == 5890) {
-                    int depthName = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, sourceFbo);
+                int attachmentType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                if (attachmentType == GL11.GL_TEXTURE) {
+                    int depthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
                     if (depthName > 0) {
                         externalSceneDepthTex = depthName;
                         capturedW = w;
                         capturedH = h;
                         capturedThisFrame = true;
-                        GL30.glBindFramebuffer(36160, prevReadFbo);
-                        GL30.glBindFramebuffer(36160, prevDrawFbo);
+                        logCapturePathChange("direct", depthName, w, h);
+                        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+                        logDepthSnapshot("capture_depth_texture", source.getDepthTextureId(), -1);
                         return;
                     }
                 }
 
-                GL30.glBindFramebuffer(36160, prevReadFbo);
-                GL30.glBindFramebuffer(36160, prevDrawFbo);
-                GL30.glBindFramebuffer(36008, sourceFbo);
-                GL30.glBindFramebuffer(36009, captureFbo);
-                GL11.glReadBuffer(0);
-                GL30.glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, 256, 9728);
-                GL30.glBindFramebuffer(36008, prevReadFbo);
-                GL30.glBindFramebuffer(36009, prevDrawFbo);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, sourceFbo);
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, captureFbo);
+                GL30.glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL11.GL_DEPTH_BUFFER_BIT, GL11.GL_NEAREST);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
                 capturedThisFrame = true;
+                logCapturePathChange("blit", capturedSceneDepthTex, w, h);
+                logDepthSnapshot("capture_depth_blit", source.getDepthTextureId(), -1);
             }
         }
     }
@@ -172,13 +183,19 @@ public final class FinalCloudCompositeHandler {
                                 boolean depthEnabled = GL11.glIsEnabled(2929);
                                 boolean blendEnabled = GL11.glIsEnabled(3042);
                                 boolean depthMask = GL11.glGetBoolean(2930);
+                                int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
+                                int prevBlendSrcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB);
+                                int prevBlendDstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB);
+                                int prevBlendSrcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA);
+                                int prevBlendDstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA);
+                                int prevActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
                                 int mainFbo = ((MixinRenderTargetAccessor)mc.getMainRenderTarget()).simpleclouds$getFrameBufferId();
                                 int originalDepthTex = mc.getMainRenderTarget().getDepthTextureId();
                                 GL30.glBindFramebuffer(36160, mainFbo);
                                 int prevDepthAttachmentType = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36048);
                                 int prevDepthAttachmentName = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
                                 GL11.glViewport(0, 0, windowW, windowH);
-                                int depthTestTex = externalSceneDepthTex > 0 ? externalSceneDepthTex : originalDepthTex;
+                                int depthTestTex = selectPrimarySceneDepthTex(originalDepthTex, cloudDepthTex);
                                 boolean swappedDepthAttachment = false;
                                 if (depthTestTex > 0 && (prevDepthAttachmentType != 3553 || prevDepthAttachmentName != depthTestTex)) {
                                     GL30.glFramebufferTexture2D(36160, 36096, 3553, depthTestTex, 0);
@@ -190,7 +207,7 @@ public final class FinalCloudCompositeHandler {
 
                                 RenderSystem.depthMask(false);
                                 GL11.glEnable(3042);
-                                GL11.glBlendFunc(770, 771);
+                                GL14.glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
                                 GL20.glUseProgram(compositeProgram);
                                 GL13.glActiveTexture(33984);
                                 GL11.glBindTexture(3553, cloudColorTex);
@@ -198,50 +215,13 @@ public final class FinalCloudCompositeHandler {
                                 GL13.glActiveTexture(33985);
                                 GL11.glBindTexture(3553, cloudDepthTex);
                                 GL20.glUniform1i(locCloudDepth, 1);
-                                int sceneDepthTex = combinedValidThisFrame && combinedSceneDepthTex > 0
-                                        ? combinedSceneDepthTex
-                                        : (externalSceneDepthTex > 0 ? externalSceneDepthTex : capturedSceneDepthTex);
-                                if (sceneDepthTex <= 0) {
-                                    sceneDepthTex = originalDepthTex;
-                                }
-                                if (sceneDepthTex <= 0) {
-                                    sceneDepthTex = cloudDepthTex;
-                                }
-                                int sceneDepthTex2 = sceneDepthTex;
-                                int useDepth2 = 0;
-                                if (sceneDepthTex == combinedSceneDepthTex) {
-                                    if (externalSceneDepthTex > 0 && externalSceneDepthTex != sceneDepthTex) {
-                                        sceneDepthTex2 = externalSceneDepthTex;
-                                        useDepth2 = 1;
-                                    } else if (capturedSceneDepthTex > 0 && capturedSceneDepthTex != sceneDepthTex) {
-                                        sceneDepthTex2 = capturedSceneDepthTex;
-                                        useDepth2 = 1;
-                                    }
-                                } else if (sceneDepthTex == externalSceneDepthTex && combinedSceneDepthTex > 0 && combinedSceneDepthTex != sceneDepthTex) {
-                                    sceneDepthTex2 = combinedSceneDepthTex;
-                                    useDepth2 = 1;
-                                }
-                                long now = System.currentTimeMillis();
-                                if (now - lastDepthLogMs >= 1000L) {
-                                    lastDepthLogMs = now;
-                                    System.out.println("[OFSC DEBUG] Composite depth ids: scene=" + sceneDepthTex
-                                            + " scene2=" + sceneDepthTex2 + " use2=" + useDepth2
-                                            + " combined=" + combinedSceneDepthTex + " captured=" + capturedSceneDepthTex
-                                            + " external=" + externalSceneDepthTex + " original=" + originalDepthTex
-                                            + " cloudDepth=" + cloudDepthTex + " reverse=" + reverseDepthDetected
-                                            + " size=" + windowW + "x" + windowH);
-                                }
+                                int sceneDepthTex = selectPrimarySceneDepthTex(originalDepthTex, cloudDepthTex);
+                                String sceneDepthSource = selectPrimarySceneDepthSource(originalDepthTex, cloudDepthTex);
+                                logSceneDepthSelectionChange(sceneDepthSource, sceneDepthTex, originalDepthTex, cloudDepthTex);
+                                logDepthSnapshot("final_composite", originalDepthTex, cloudDepthTex);
                                 GL13.glActiveTexture(33986);
                                 GL11.glBindTexture(3553, sceneDepthTex);
                                 GL20.glUniform1i(locSceneDepth, 2);
-                                GL13.glActiveTexture(33987);
-                                GL11.glBindTexture(3553, sceneDepthTex2);
-                                if (locSceneDepth2 >= 0) {
-                                    GL20.glUniform1i(locSceneDepth2, 3);
-                                }
-                                if (locUseSceneDepth2 >= 0) {
-                                    GL20.glUniform1i(locUseSceneDepth2, useDepth2);
-                                }
                                 GL20.glUniform1f(locDepthBias, 0.001F);
                                 GL20.glUniform1i(locReverseDepth, reverseDepthDetected ? 1 : 0);
                                 //maybeLogDepthSamples(cloudDepthTex, capturedSceneDepthTex, windowW, windowH);
@@ -254,6 +234,8 @@ public final class FinalCloudCompositeHandler {
 
                                 RenderSystem.depthMask(true);
                                 GL11.glDepthMask(depthMask);
+                                GL11.glDepthFunc(prevDepthFunc);
+                                GL14.glBlendFuncSeparate(prevBlendSrcRgb, prevBlendDstRgb, prevBlendSrcAlpha, prevBlendDstAlpha);
                                 if (swappedDepthAttachment) {
                                     if (prevDepthAttachmentType == 3553) {
                                         GL30.glFramebufferTexture2D(36160, 36096, 3553, prevDepthAttachmentName, 0);
@@ -274,6 +256,7 @@ public final class FinalCloudCompositeHandler {
                                 GL30.glBindFramebuffer(36160, prevFbo);
                                 GL13.glActiveTexture(33984);
                                 GL11.glBindTexture(3553, 0);
+                                GL13.glActiveTexture(prevActiveTexture);
                             }
                         }
                     }
@@ -282,12 +265,44 @@ public final class FinalCloudCompositeHandler {
         }
     }
 
+    private static int selectPrimarySceneDepthTex(int originalDepthTex, int cloudDepthTex) {
+        if (externalSceneDepthTex > 0) {
+            return externalSceneDepthTex;
+        }
+        if (originalDepthTex > 0) {
+            return originalDepthTex;
+        }
+        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
+            return combinedSceneDepthTex;
+        }
+        if (capturedSceneDepthTex > 0) {
+            return capturedSceneDepthTex;
+        }
+        return cloudDepthTex;
+    }
+
+    private static String selectPrimarySceneDepthSource(int originalDepthTex, int cloudDepthTex) {
+        if (externalSceneDepthTex > 0) {
+            return "external";
+        }
+        if (originalDepthTex > 0) {
+            return "original";
+        }
+        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
+            return "combined";
+        }
+        if (capturedSceneDepthTex > 0) {
+            return "captured";
+        }
+        return "cloud";
+    }
+
     private static boolean ensureCompositeProgram() {
         if (compositeProgram != -1 && compositeVao != -1 && compositeVbo != -1) {
             return true;
         } else {
             String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
-            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uCloudColor;uniform sampler2D uCloudDepth;uniform sampler2D uSceneDepth;uniform sampler2D uSceneDepth2;uniform float uBias;uniform int uReverse;uniform int uUseSceneDepth2;out vec4 fragColor;void main(){float cloudD=texture(uCloudDepth,vUv).r;float sceneD=texture(uSceneDepth,vUv).r;float sceneD2=texture(uSceneDepth2,vUv).r;if(uUseSceneDepth2==1){if(uReverse==1){sceneD=max(sceneD,sceneD2);}else{if(sceneD<=0.0){sceneD=1.0;}if(sceneD2<=0.0){sceneD2=1.0;}sceneD=min(sceneD,sceneD2);}}if(uReverse==0&&sceneD<=0.0){sceneD=1.0;}if(cloudD<=0.0||cloudD>=1.0){discard;}bool sceneIsSky=uReverse==1?sceneD<=0.0000001:sceneD>=0.9999999;float fragD=uReverse==1?cloudD+uBias:cloudD-uBias;if(!sceneIsSky){if(uReverse==1){if(fragD<sceneD){discard;}}else{if(fragD>sceneD){discard;}}}gl_FragDepth=fragD;fragColor=texture(uCloudColor,vUv);}";
+            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uCloudColor;uniform sampler2D uCloudDepth;uniform sampler2D uSceneDepth;uniform float uBias;uniform int uReverse;out vec4 fragColor;void main(){vec4 cloud=texture(uCloudColor,vUv);if(cloud.a<=0.04){discard;}float cloudD=texture(uCloudDepth,vUv).r;float sceneD=texture(uSceneDepth,vUv).r;if(uReverse==0&&sceneD<=0.0){sceneD=1.0;}if(cloudD<=0.0||cloudD>=1.0){discard;}bool sceneIsSky=uReverse==1?sceneD<=0.0000001:sceneD>=0.9999999;float fragD=uReverse==1?cloudD+uBias:cloudD-uBias;if(!sceneIsSky){if(uReverse==1){if(fragD<sceneD){discard;}}else{if(fragD>sceneD){discard;}}}gl_FragDepth=fragD;fragColor=vec4(cloud.rgb*cloud.a,cloud.a);}";
             int vert = GL20.glCreateShader(35633);
             GL20.glShaderSource(vert, vertexSrc);
             GL20.glCompileShader(vert);
@@ -322,8 +337,6 @@ public final class FinalCloudCompositeHandler {
                         locSceneDepth = GL20.glGetUniformLocation(compositeProgram, "uSceneDepth");
                         locDepthBias = GL20.glGetUniformLocation(compositeProgram, "uBias");
                         locReverseDepth = GL20.glGetUniformLocation(compositeProgram, "uReverse");
-                        locSceneDepth2 = GL20.glGetUniformLocation(compositeProgram, "uSceneDepth2");
-                        locUseSceneDepth2 = GL20.glGetUniformLocation(compositeProgram, "uUseSceneDepth2");
                         compositeVao = GL30.glGenVertexArrays();
                         compositeVbo = GL15.glGenBuffers();
                         GL30.glBindVertexArray(compositeVao);
@@ -593,7 +606,28 @@ public final class FinalCloudCompositeHandler {
         mixedDepthH = -1;
     }
 
-    private static void ensureSceneDepthTarget(int w, int h) {
+    public static void logDepthSnapshot(String stage, int originalDepthTex, int cloudDepthTex) {
+        if (!DEBUG_DEPTH_SNAPSHOTS) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long last = depthStageLogMs.get(stage);
+        if (last != null && now - last < 1000L) {
+            return;
+        }
+        depthStageLogMs.put(stage, now);
+        System.out.println("[OFSC DEBUG] " + stage + " depth samples: "
+                + describeDepthTexture("external", externalSceneDepthTex)
+                + " | " + describeDepthTexture("captured", capturedSceneDepthTex)
+                + " | " + describeDepthTexture("combined", combinedSceneDepthTex)
+                + " | " + describeDepthTexture("original", originalDepthTex)
+                + " | " + describeDepthTexture("cloud", cloudDepthTex));
+    }
+
+    private static boolean ensureSceneDepthTarget(int w, int h) {
+        if (w <= 0 || h <= 0) {
+            return false;
+        }
         if (capturedSceneDepthTex == -1) {
             capturedSceneDepthTex = GL11.glGenTextures();
             GL11.glBindTexture(3553, capturedSceneDepthTex);
@@ -615,27 +649,44 @@ public final class FinalCloudCompositeHandler {
             captureFbo = GL30.glGenFramebuffers();
         }
 
-        GL30.glBindFramebuffer(36160, captureFbo);
-        GL30.glFramebufferTexture2D(36160, 36096, 3553, capturedSceneDepthTex, 0);
-        GL30.glDrawBuffer(0);
-        GL30.glReadBuffer(0);
-        GL30.glBindFramebuffer(36160, 0);
+        int prevFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, captureFbo);
+        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, capturedSceneDepthTex, 0);
+        GL11.glDrawBuffer(GL11.GL_NONE);
+        GL11.glReadBuffer(GL11.GL_NONE);
+        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFramebuffer);
+        if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+            System.out.println("[OFSC WARN] Scene depth capture FBO incomplete (" + status + ") tex="
+                    + capturedSceneDepthTex + " fbo=" + captureFbo + " size=" + w + "x" + h);
+            return false;
+        }
+        return true;
     }
 
-    private static void maybeLogDepthSamples(int cloudDepthTex, int sceneDepthTex, int w, int h) {
-        long now = System.currentTimeMillis();
-        if (now - lastDepthLogMs >= 1000L) {
-            lastDepthLogMs = now;
-            float sceneCenter = sampleDepthAt(sceneDepthTex, 0.5F, 0.5F);
-            float sceneNearX = sampleDepthAt(sceneDepthTex, 0.25F, 0.5F);
-            float sceneFarX = sampleDepthAt(sceneDepthTex, 0.75F, 0.5F);
-            float cloudCenter = sampleDepthAt(cloudDepthTex, 0.5F, 0.5F);
-            float cloudNearX = sampleDepthAt(cloudDepthTex, 0.25F, 0.5F);
-            float cloudFarX = sampleDepthAt(cloudDepthTex, 0.75F, 0.5F);
-            System.out.println("[OFSC DEBUG] Composite depth samples: sceneCenter=" + sceneCenter + " cloudCenter=" + cloudCenter + " size=" + w + "x" + h);
-            System.out.println("[OFSC DEBUG] Composite depth spans: sceneNearX=" + sceneNearX + " sceneFarX=" + sceneFarX + " cloudNearX=" + cloudNearX + " cloudFarX=" + cloudFarX);
-            reverseDepthDetected = false;
+    private static void logSceneDepthSelectionChange(String source, int tex, int originalDepthTex, int cloudDepthTex) {
+        if (tex == lastDepthSelectionTex && source.equals(lastDepthSelectionSource)) {
+            return;
         }
+        lastDepthSelectionSource = source;
+        lastDepthSelectionTex = tex;
+        System.out.println("[OFSC DEBUG] Scene depth select: source=" + source
+                + " tex=" + tex
+                + " external=" + externalSceneDepthTex
+                + " original=" + originalDepthTex
+                + " combined=" + (combinedValidThisFrame ? combinedSceneDepthTex : -1)
+                + " captured=" + capturedSceneDepthTex
+                + " cloud=" + cloudDepthTex
+                + " capturedThisFrame=" + capturedThisFrame);
+    }
+
+    private static void logCapturePathChange(String mode, int tex, int w, int h) {
+        if (tex == lastCaptureTex && mode.equals(lastCaptureMode)) {
+            return;
+        }
+        lastCaptureMode = mode;
+        lastCaptureTex = tex;
+        System.out.println("[OFSC DEBUG] Depth capture: mode=" + mode + " tex=" + tex + " size=" + w + "x" + h);
     }
 
     private static float sampleDepthAt(int tex, float u, float v) {
@@ -645,20 +696,56 @@ public final class FinalCloudCompositeHandler {
             GL11.glBindTexture(3553, tex);
             int w = GL11.glGetTexLevelParameteri(3553, 0, 4096);
             int h = GL11.glGetTexLevelParameteri(3553, 0, 4097);
-            if (w > 0 && h > 0 && (long)w * (long)h <= 4000000L) {
-                int x = Math.max(0, Math.min(w - 1, (int)(u * (float)w)));
-                int y = Math.max(0, Math.min(h - 1, (int)(v * (float)h)));
-                int idx = y * w + x;
-                FloatBuffer buf = ByteBuffer.allocateDirect((int)((long)w * (long)h * 4L)).order(ByteOrder.nativeOrder()).asFloatBuffer();
-                GL11.glGetTexImage(3553, 0, 6402, 5126, buf);
-                float val = buf.get(idx);
-                GL11.glBindTexture(3553, 0);
-                return val;
-            } else {
-                GL11.glBindTexture(3553, 0);
+            GL11.glBindTexture(3553, 0);
+            if (w <= 0 || h <= 0) {
                 return -1.0F;
             }
+            if (!ensureDepthDebugSampleFbo()) {
+                return -1.0F;
+            }
+
+            int x = Math.max(0, Math.min(w - 1, Math.round(u * (float)(w - 1))));
+            int y = Math.max(0, Math.min(h - 1, Math.round(v * (float)(h - 1))));
+            int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, depthDebugSampleFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, tex, 0);
+            if (GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+                return -1.0F;
+            }
+            FloatBuffer buf = BufferUtils.createFloatBuffer(1);
+            GL11.glReadPixels(x, y, 1, 1, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, buf);
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+            return buf.get(0);
         }
+    }
+
+    private static boolean ensureDepthDebugSampleFbo() {
+        if (depthDebugSampleFbo == -1) {
+            depthDebugSampleFbo = GL30.glGenFramebuffers();
+            int prevFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, depthDebugSampleFbo);
+            GL11.glDrawBuffer(GL11.GL_NONE);
+            GL11.glReadBuffer(GL11.GL_NONE);
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFramebuffer);
+        }
+        return depthDebugSampleFbo > 0;
+    }
+
+    private static String describeDepthTexture(String label, int tex) {
+        if (tex <= 0) {
+            return label + "=none";
+        }
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, tex);
+        int w = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
+        int h = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        return label + "#" + tex + "(" + w + "x" + h + ")"
+                + "[c=" + sampleDepthAt(tex, 0.50F, 0.50F)
+                + ",l=" + sampleDepthAt(tex, 0.25F, 0.50F)
+                + ",r=" + sampleDepthAt(tex, 0.75F, 0.50F)
+                + ",t=" + sampleDepthAt(tex, 0.50F, 0.75F)
+                + ",b=" + sampleDepthAt(tex, 0.50F, 0.25F) + "]";
     }
 
     private static boolean detectReverseDepth() {

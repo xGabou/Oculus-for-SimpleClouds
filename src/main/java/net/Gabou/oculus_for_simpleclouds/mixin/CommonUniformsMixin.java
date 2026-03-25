@@ -4,15 +4,12 @@ import net.Gabou.oculus_for_simpleclouds.IrisWeatherApi;
 import net.Gabou.oculus_for_simpleclouds.SimpleCloudsUniforms;
 import net.irisshaders.iris.gl.state.FogMode;
 import net.irisshaders.iris.gl.uniform.DynamicUniformHolder;
-import net.irisshaders.iris.shaderpack.IdMap;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
-import net.irisshaders.iris.uniforms.CommonUniforms; // adjust if your package differs
-import net.irisshaders.iris.gl.uniform.UniformHolder;
+import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
-import net.irisshaders.iris.shaderpack.properties.PackDirectives;
-import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
+import org.joml.Vector2f;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -63,6 +60,46 @@ public class CommonUniformsMixin {
                 () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
                         .map(t -> t.textureUnit())
                         .orElse(0)
+        );
+
+        uniforms.uniform2f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_CloudShadowTexSize",
+                () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
+                        .map(state -> new Vector2f(state.textureSize(), state.textureSize()))
+                        .orElse(new Vector2f(0.0F, 0.0F))
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_CloudShadowWorldSpan",
+                () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
+                        .map(SimpleCloudsUniforms.CloudLayerTextureState::worldSpan)
+                        .orElse(0.0F)
+        );
+
+        uniforms.uniform2f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_CloudShadowOriginXZ",
+                () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
+                        .map(state -> new Vector2f(state.originX(), state.originZ()))
+                        .orElse(new Vector2f(0.0F, 0.0F))
+        );
+
+        uniforms.uniform2f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_CloudShadowScrollXZ",
+                () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
+                        .map(state -> new Vector2f(state.scrollX(), state.scrollZ()))
+                        .orElse(new Vector2f(0.0F, 0.0F))
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_CloudHeight",
+                () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
+                        .map(SimpleCloudsUniforms.CloudLayerTextureState::cloudHeight)
+                        .orElse(0.0F)
         );
 
         uniforms.uniform1f(

@@ -88,6 +88,9 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         RenderTarget mainTarget = mc.getMainRenderTarget();
         FinalCloudCompositeHandler.captureDepth(mainTarget);
         boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
+        FinalCloudCompositeHandler.logDepthSnapshot("shader_no_dh_after_copy",
+                mainTarget == null ? -1 : mainTarget.getDepthTextureId(),
+                cloudTarget.getDepthTextureId());
         debug(String.format(
                 "Shader-only pass: copiedVanilla=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
                 copiedVanillaDepth, cloudTarget.getDepthTextureId(), cloudTarget.width, cloudTarget.height,
@@ -301,7 +304,6 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
                 GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, sourceFbo);
                 GL11.glViewport(0, 0, copyW, copyH);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, cloudDepthTex);
-                GL11.glReadBuffer(GL11.GL_NONE);
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, copyW, copyH);
             }
         }

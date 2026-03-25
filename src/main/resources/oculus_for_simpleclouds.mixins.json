@@ -8,8 +8,8 @@
     "CloudGeneratorDimensionWhitelistMixin"
   ],
   "client": [
-    "FinalCloudCompositeOpaqueInsideMixin",
     "CommonUniformsMixin",
+    "SimpleCloudsColorGradingMixin",
     "ShaderPropertiesMixin",
     "SimpleCloudsCompatHelperMixin",
     "SimpleCloudsDepthCopyBypassMixin",
