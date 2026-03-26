@@ -9,12 +9,12 @@
   ],
   "client": [
     "CommonUniformsMixin",
-    "SimpleCloudsColorGradingMixin",
     "ShaderPropertiesMixin",
     "SimpleCloudsCompatHelperMixin",
     "SimpleCloudsDepthCopyBypassMixin",
     "SimpleCloudsCopyDepthGuardMixin",
     "SimpleCloudsOpaqueInsideMixin",
+    "SimpleCloudsSunLightingMixin",
     "SimpleCloudsPipelineSelectMixin",
     "SimpleCloudsForcePipelineMixin",
     "dh.SimpleCloudsDhForgeEventsMixin",
