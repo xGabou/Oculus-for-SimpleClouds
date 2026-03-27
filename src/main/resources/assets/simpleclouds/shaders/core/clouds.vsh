@@ -20,6 +20,7 @@ uniform float FogEnd;
 out vec4 vertexColor;
 out float fogDistance;
 out vec3 viewSpacePos;
+out vec3 cloudLocalPos;
 flat out vec3 faceNormal;
 
 float saturate(float value)
@@ -77,14 +78,13 @@ void main()
     gl_Position = ProjMat * modelPos;
     fogDistance = length(modelPos.xz);
     viewSpacePos = modelPos.xyz;
+    cloudLocalPos = finalPos.xyz;
     faceNormal = normals[uint(info.side)];
 
     vec4 finalCol = vec4(mix(DarknessColorModifier, vec3(1.0), info.brightness), 1.0);
     if (UseNormals)
     {
         vertexColor = mixLight(Light0_Direction, Light1_Direction, faceNormal, finalCol, fogDistance);
-        float debugNearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
-        vertexColor.rgb = mix(vertexColor.rgb, vec3(0.15, 1.0, 0.15), debugNearFactor);
     }
     else
     {
