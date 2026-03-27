@@ -49,12 +49,13 @@ void main()
     {
         vec3 normal = normalize(faceNormal);
         vec3 sunDir = normalize(Light0_Direction);
-        float sunFacing = smooth01(saturate(dot(normal, sunDir)));
+        float sunDot = dot(normal, sunDir);
+        float sunSpread = smoothstep(-0.25, 0.85, sunDot);
         float nearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
         float warmStrength = smooth01(SunWarmth) * mix(0.40, 1.0, nearFactor);
         float sunLuma = max(luminance(SunColor), 1.0E-4);
         vec3 sunTint = mix(vec3(1.0), SunColor / sunLuma, 0.88);
-        float tintStrength = warmStrength * mix(0.20, 0.62, sunFacing);
+        float tintStrength = warmStrength * mix(0.24, 0.60, sunSpread);
         vec3 tintTarget = baseColor * sunTint * mix(1.0, 1.10, warmStrength);
         litColor = mix(baseColor, tintTarget, tintStrength);
     }

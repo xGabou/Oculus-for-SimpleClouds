@@ -43,7 +43,9 @@ vec4 mixLight(vec3 lightDir0, vec3 lightDir1, vec3 normal, vec4 color, float fog
     lightDir0 = normalize(lightDir0);
     lightDir1 = normalize(lightDir1);
 
-    float sunFacing = max(0.0, dot(lightDir0, normal));
+    float sunDot = dot(lightDir0, normal);
+    float sunFacing = max(0.0, sunDot);
+    float sunSpread = smoothstep(-0.25, 0.85, sunDot);
     float fillFacing = max(0.0, dot(lightDir1, normal));
     float nearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
     float warmStrength = smooth01(SunWarmth) * mix(0.30, 0.92, nearFactor);
@@ -51,13 +53,14 @@ vec4 mixLight(vec3 lightDir0, vec3 lightDir1, vec3 normal, vec4 color, float fog
     float sunLuma = max(luminance(SunColor), 1.0E-4);
     vec3 sunTint = mix(vec3(1.0), SunColor / sunLuma, 0.72);
 
-    float ambient = mix(AmbientLight, 0.72, warmStrength);
+    float ambient = mix(AmbientLight, 0.66, warmStrength);
     float sunTerm = sunFacing * mix(LightPower, 0.82, warmStrength);
-    float fillTerm = fillFacing * LightPower * mix(0.30, 0.16, warmStrength);
+    float fillTerm = fillFacing * LightPower * mix(0.30, 0.12, warmStrength);
     float lightAccum = saturate(ambient + sunTerm + fillTerm);
+    lightAccum *= mix(1.0, 0.94, warmStrength * nearFactor);
 
     vec3 neutralLit = color.rgb * lightAccum;
-    float tintStrength = warmStrength * mix(0.14, 0.44, sunFacing);
+    float tintStrength = warmStrength * mix(0.18, 0.42, sunSpread);
     vec3 finalLit = mix(neutralLit, neutralLit * sunTint, tintStrength);
     return vec4(finalLit, color.a);
 }
@@ -80,6 +83,8 @@ void main()
     if (UseNormals)
     {
         vertexColor = mixLight(Light0_Direction, Light1_Direction, faceNormal, finalCol, fogDistance);
+        float debugNearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
+        vertexColor.rgb = mix(vertexColor.rgb, vec3(0.15, 1.0, 0.15), debugNearFactor);
     }
     else
     {
