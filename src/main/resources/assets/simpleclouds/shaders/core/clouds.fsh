@@ -23,6 +23,7 @@ out vec4 fragColor;
 const float OPAQUE_WARM_FLOOR = 0.18;
 const float OPAQUE_WARM_STRENGTH = 0.65;
 const float OPAQUE_WARM_TINT_BOOST = 1.35;
+const float OPAQUE_COLOR_IMPACT = 3.50;
 const float OPAQUE_VARIATION_SCALE = 0.014;
 const float OPAQUE_SUN_BASE_MIN = 0.45;
 const float OPAQUE_VARIATION_MIN = 0.80;
@@ -117,7 +118,7 @@ void main()
     float warmMask = saturate(warmStrength * warmBase * warmVar * warmEdge * warmBulk);
 
     vec3 warmTint = mix(SunColor, vec3(1.0, 0.68, 0.50), 0.45);
-    float warmAmount = clamp(OPAQUE_WARM_FLOOR + warmMask * OPAQUE_WARM_STRENGTH, 0.0, 1.0);
+    float warmAmount = clamp((OPAQUE_WARM_FLOOR + warmMask * OPAQUE_WARM_STRENGTH) * OPAQUE_COLOR_IMPACT, 0.0, 1.0);
 
     if (OPAQUE_DEBUG_VIEW == 1)
     {

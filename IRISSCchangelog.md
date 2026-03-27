@@ -1,11 +1,38 @@
-# Iris/Oculus For Simple Clouds
+☁️ **Oculus for Simple Clouds — Progress Update**
 
-### Fixed
-- Distant Horizons is now fully supported and no longer hides clouds.
-- Improved compatibility with Immersive Engineering.
+## 🧠 Summary
+- Clouds now react properly to sunrise and sunset 🌅
+- Lighting is now handled directly in the cloud shaders (no more fake tint)
+- Stable baseline restored after removing broken experiments
+- Works even without shaderpacks
 
-### Known Issues
-- Alex’s Caves still has major issues (clouds may not appear at all).
+---
 
+## 🔥 What’s Working
+- 🌅 Sunrise / sunset coloring → **YESSS**
+- 🧱 Alex’s Caves → **YEEESSS**
+- ⚙️ Immersive Engineering → **YEEESSS**
 
-### Changed / Removed
+---
+
+## 🎨 Current State
+- Transparent clouds → looking great ✅
+- Distant clouds → already good, untouched ✅
+- Opaque clouds → still a bit too gray (being improved)
+
+---
+
+## ❌ Not Working Yet
+- 🌍 Distant Horizons → **still broken 💀**
+
+---
+
+## 🚧 In Progress
+- Improve warm lighting on opaque clouds
+- Keep natural variation (no flat colors)
+- Match the look of transparent clouds
+
+---
+
+We’re VERY close now 👀  
+Just need that final touch of sunlight on the main cloud body.
