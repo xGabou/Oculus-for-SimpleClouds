@@ -4,7 +4,7 @@ uniform sampler2D BayerMatrixSampler;
 
 uniform vec4 ColorModulator;
 uniform bool UseNormals;
-uniform vec3 SunDirection;
+uniform vec3 Light0_Direction;
 uniform vec3 SunColor;
 uniform float SunWarmth;
 uniform float DitherScale;
@@ -48,25 +48,15 @@ void main()
     if (UseNormals)
     {
         vec3 normal = normalize(faceNormal);
-        vec3 sunDir = normalize(SunDirection);
+        vec3 sunDir = normalize(Light0_Direction);
         float sunFacing = smooth01(saturate(dot(normal, sunDir)));
         float nearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
-
+        float warmStrength = smooth01(SunWarmth) * mix(0.40, 1.0, nearFactor);
         float sunLuma = max(luminance(SunColor), 1.0E-4);
-        vec3 sunTint = mix(vec3(1.0), SunColor / sunLuma, 0.90);
-        float sunColorWarmth = saturate(
-            max(sunTint.r - sunTint.b, 0.0)
-            + 0.35 * max(sunTint.g - sunTint.b, 0.0)
-            + 0.20 * max(sunTint.r - sunTint.g, 0.0)
-        );
-        float atmosphericStrength = smooth01(saturate(max(SunWarmth * 1.35, sunColorWarmth)));
-        float sunInfluence = saturate(sunFacing * atmosphericStrength * mix(0.28, 1.15, nearFactor));
-
-        float baseLuma = luminance(baseColor);
-        vec3 warmTarget = vec3(baseLuma) * sunTint * mix(1.02, 1.22, atmosphericStrength);
-        vec3 sunTarget = mix(baseColor, warmTarget, 0.92);
-        float brightnessBoost = 1.0 + sunFacing * atmosphericStrength * mix(0.06, 0.16, nearFactor);
-        litColor = mix(baseColor, sunTarget * brightnessBoost, sunInfluence);
+        vec3 sunTint = mix(vec3(1.0), SunColor / sunLuma, 0.88);
+        float tintStrength = warmStrength * mix(0.20, 0.62, sunFacing);
+        vec3 tintTarget = baseColor * sunTint * mix(1.0, 1.10, warmStrength);
+        litColor = mix(baseColor, tintTarget, tintStrength);
     }
 
     vec4 color = vec4(litColor, vertexColor.a);
