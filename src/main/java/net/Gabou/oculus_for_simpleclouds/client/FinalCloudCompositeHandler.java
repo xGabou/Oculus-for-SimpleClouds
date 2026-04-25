@@ -195,7 +195,9 @@ public final class FinalCloudCompositeHandler {
                                 int prevDepthAttachmentType = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36048);
                                 int prevDepthAttachmentName = GL30.glGetFramebufferAttachmentParameteri(36160, 36096, 36049);
                                 GL11.glViewport(0, 0, windowW, windowH);
-                                int depthTestTex = selectPrimarySceneDepthTex(originalDepthTex, cloudDepthTex);
+                                int sceneDepthTex = selectPrimarySceneDepthTex(originalDepthTex, cloudDepthTex);
+                                String sceneDepthSource = selectPrimarySceneDepthSource(originalDepthTex, cloudDepthTex);
+                                int depthTestTex = sceneDepthTex;
                                 boolean swappedDepthAttachment = false;
                                 if (depthTestTex > 0 && (prevDepthAttachmentType != 3553 || prevDepthAttachmentName != depthTestTex)) {
                                     GL30.glFramebufferTexture2D(36160, 36096, 3553, depthTestTex, 0);
@@ -215,8 +217,6 @@ public final class FinalCloudCompositeHandler {
                                 GL13.glActiveTexture(33985);
                                 GL11.glBindTexture(3553, cloudDepthTex);
                                 GL20.glUniform1i(locCloudDepth, 1);
-                                int sceneDepthTex = selectPrimarySceneDepthTex(originalDepthTex, cloudDepthTex);
-                                String sceneDepthSource = selectPrimarySceneDepthSource(originalDepthTex, cloudDepthTex);
                                 logSceneDepthSelectionChange(sceneDepthSource, sceneDepthTex, originalDepthTex, cloudDepthTex);
                                 logDepthSnapshot("final_composite", originalDepthTex, cloudDepthTex);
                                 GL13.glActiveTexture(33986);
@@ -266,14 +266,14 @@ public final class FinalCloudCompositeHandler {
     }
 
     private static int selectPrimarySceneDepthTex(int originalDepthTex, int cloudDepthTex) {
+        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
+            return combinedSceneDepthTex;
+        }
         if (externalSceneDepthTex > 0) {
             return externalSceneDepthTex;
         }
         if (originalDepthTex > 0) {
             return originalDepthTex;
-        }
-        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
-            return combinedSceneDepthTex;
         }
         if (capturedSceneDepthTex > 0) {
             return capturedSceneDepthTex;
@@ -282,14 +282,14 @@ public final class FinalCloudCompositeHandler {
     }
 
     private static String selectPrimarySceneDepthSource(int originalDepthTex, int cloudDepthTex) {
+        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
+            return "combined";
+        }
         if (externalSceneDepthTex > 0) {
             return "external";
         }
         if (originalDepthTex > 0) {
             return "original";
-        }
-        if (combinedValidThisFrame && combinedSceneDepthTex > 0) {
-            return "combined";
         }
         if (capturedSceneDepthTex > 0) {
             return "captured";
