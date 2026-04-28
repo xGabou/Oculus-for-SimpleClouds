@@ -121,7 +121,6 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
         GL11.glDepthMask(true);
         if (DEBUG_BLIT_CLOUD_TARGET) {
             cloudTarget.bindWrite(false);
@@ -179,7 +178,7 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         }
 
         mc.getMainRenderTarget().bindWrite(false);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, cloudTarget.getColorTextureId(), 0);
+        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
         RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
 
         stack.pushPose();
@@ -198,7 +197,7 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         }
 
         RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, mc.getMainRenderTarget().getColorTextureId(), 0);
+        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, mc.getMainRenderTarget().getDepthTextureId(), 0);
     }
 
     @Override

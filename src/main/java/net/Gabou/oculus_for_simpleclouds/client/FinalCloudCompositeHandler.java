@@ -25,7 +25,6 @@ import net.minecraftforge.client.event.RenderLevelStageEvent.Stage;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
-import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
@@ -84,13 +83,11 @@ public final class FinalCloudCompositeHandler {
 
     @SubscribeEvent
     public static void onRenderStage(RenderLevelStageEvent event) {
-        if (CompatHelper.areShadersRunning()) {
-            if (event.getStage() == Stage.AFTER_LEVEL) {
-                compositeClouds();
-                capturedThisFrame = false;
-                combinedValidThisFrame = false;
-            }
-
+        if (event.getStage() == Stage.AFTER_LEVEL) {
+            // The active Simple Clouds pipeline already performs the final composite.
+            // Running another fullscreen pass after the level is complete breaks normal depth ordering.
+            capturedThisFrame = false;
+            combinedValidThisFrame = false;
         }
     }
 
