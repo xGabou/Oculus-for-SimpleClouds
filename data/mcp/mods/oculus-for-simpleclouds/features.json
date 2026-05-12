@@ -1,0 +1,50 @@
+﻿{
+  "features": [
+    {
+      "id": "shader-aware-pipeline-selection",
+      "name": "Shader-aware pipeline selection",
+      "description": "Forces Simple Clouds to use the shader-aware pipeline when shaders are active.",
+      "notes": "Implemented through Simple Clouds renderer mixins."
+    },
+    {
+      "id": "shader-uniform-bridge",
+      "name": "Shader uniform bridge",
+      "description": "Exposes cloud, weather, and storm-related values to supported shader integrations.",
+      "examples": [
+        "Cloud and storm uniforms for supported shader packs"
+      ]
+    },
+    {
+      "id": "iris-weather-provider",
+      "name": "Iris weather provider bridge",
+      "description": "Overrides rain, thunder, and sky darken inputs used by Iris-compatible shader uniforms.",
+      "examples": [
+        "Localized rain and thunder values from Simple Clouds"
+      ]
+    },
+    {
+      "id": "oculus-sky-bridge-registration",
+      "name": "Oculus sky bridge registration",
+      "description": "Registers the Simple Clouds render target with the Oculus sky bridge when the API is present."
+    },
+    {
+      "id": "cloud-dimension-whitelist",
+      "name": "Cloud dimension whitelist",
+      "description": "Lets support users restrict each cloud type to specific dimensions through a JSON file.",
+      "examples": [
+        "Allow simpleclouds:cumulus only in minecraft:overworld"
+      ]
+    },
+    {
+      "id": "unsupported-shader-warning",
+      "name": "Unsupported shader warning",
+      "description": "Warns users when they select a shader pack other than Atmospheric Shaders."
+    },
+    {
+      "id": "experimental-dh-depth-integration",
+      "name": "Experimental Distant Horizons depth integration",
+      "description": "Includes shader-aware depth capture and merge logic for Distant Horizons.",
+      "notes": "Repository docs still describe Distant Horizons support as experimental."
+    }
+  ]
+}

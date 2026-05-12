@@ -1,0 +1,7 @@
+﻿{
+  "commands": [],
+  "notes": [
+    "No Brigadier command registration was found in src/main/java.",
+    "Support should treat this mod as having no user-facing commands unless future versions add them."
+  ]
+}

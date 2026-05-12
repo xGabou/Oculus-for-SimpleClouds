@@ -1,0 +1,16 @@
+﻿{
+  "versions": [
+    {
+      "version": "1.0.0",
+      "releaseDate": "UNKNOWN",
+      "mcVersions": [
+        "1.20.1"
+      ],
+      "loaders": [
+        "forge"
+      ],
+      "supportStatus": "current",
+      "notes": "This is the only version explicitly declared in repository metadata. Earlier version history is UNKNOWN."
+    }
+  ]
+}

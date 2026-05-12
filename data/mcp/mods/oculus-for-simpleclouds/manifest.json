@@ -1,0 +1,31 @@
+﻿{
+  "slug": "oculus-for-simpleclouds",
+  "modId": "oculus_for_simpleclouds",
+  "name": "Oculus For SimpleClouds",
+  "aliases": [
+    "oculus_for_simpleclouds",
+    "oculus-for-simpleclouds",
+    "Oculus For SimpleClouds",
+    "Oculus for SimpleClouds"
+  ],
+  "latestVersion": "1.0.0",
+  "minecraftVersions": [
+    "1.20.1"
+  ],
+  "loaders": [
+    "forge"
+  ],
+  "docs": {
+    "overview": "docs/mods/oculus-for-simpleclouds/overview.md",
+    "install": "docs/mods/oculus-for-simpleclouds/install.md",
+    "troubleshooting": "docs/mods/oculus-for-simpleclouds/troubleshooting.md",
+    "faq": "docs/mods/oculus-for-simpleclouds/faq.md"
+  },
+  "links": {
+    "discord": "https://discord.gg/2jRhTJgYz4"
+  },
+  "notes": [
+    "Version, loader, and Minecraft support values come from gradle.properties and build.gradle.",
+    "Additional official homepage or issue tracker URL is UNKNOWN."
+  ]
+}

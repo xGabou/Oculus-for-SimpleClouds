@@ -1,0 +1,39 @@
+﻿{
+  "configType": "file-based",
+  "notes": [
+    "No ForgeConfigSpec entries were found in the repository.",
+    "Development JVM debug flags exist in source, but they are not documented here as normal support config."
+  ],
+  "configFiles": [
+    {
+      "path": "config/oculus_for_simpleclouds/cloud_dimension_whitelist.json",
+      "description": "Maps Simple Clouds cloud type ids to allowed dimensions.",
+      "entries": [
+        {
+          "key": "_comment",
+          "type": "string",
+          "default": "Cloud type -> allowed dimensions. Defaults to minecraft:overworld.",
+          "allowedValues": "Any string",
+          "description": "Generated comment field. Optional and informational.",
+          "example": "Cloud type -> allowed dimensions. Defaults to minecraft:overworld.",
+          "category": "metadata"
+        },
+        {
+          "key": "clouds.<cloud_type_id>",
+          "type": "array<string>",
+          "default": [
+            "minecraft:overworld"
+          ],
+          "allowedValues": "Valid dimension resource locations such as minecraft:overworld or minecraft:the_nether",
+          "description": "Allowed dimensions for a given Simple Clouds cloud type id. If the key is missing, invalid, or empty, source code falls back to minecraft:overworld.",
+          "example": {
+            "simpleclouds:cumulus": [
+              "minecraft:overworld"
+            ]
+          },
+          "category": "cloud-dimension-whitelist"
+        }
+      ]
+    }
+  ]
+}

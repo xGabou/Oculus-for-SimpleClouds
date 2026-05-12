@@ -1,0 +1,71 @@
+﻿{
+  "supportedMinecraftVersions": [
+    "1.20.1"
+  ],
+  "supportedLoaders": [
+    "forge"
+  ],
+  "requiredDependencies": [
+    {
+      "id": "forge",
+      "name": "Minecraft Forge",
+      "versionRange": "[47,)",
+      "source": "mods.toml"
+    },
+    {
+      "id": "minecraft",
+      "name": "Minecraft",
+      "versionRange": "[1.20.1,1.21)",
+      "source": "mods.toml"
+    },
+    {
+      "id": "simpleclouds",
+      "name": "Simple Clouds",
+      "version": "0.7.3+1.20.1-forge",
+      "source": "build.gradle"
+    },
+    {
+      "id": "oculus",
+      "name": "Oculus",
+      "version": "UNKNOWN",
+      "source": "README.md",
+      "notes": "README and source both assume Oculus is present for the compatibility layer to activate. Exact supported Oculus version range is not declared in metadata."
+    }
+  ],
+  "optionalDependencies": [
+    {
+      "id": "atmospheric-shaders",
+      "name": "Atmospheric Shaders",
+      "type": "shaderpack",
+      "notes": "README says this is the only officially supported shader pack."
+    },
+    {
+      "id": "project-atmosphere",
+      "name": "Project Atmosphere",
+      "type": "modpack-addon",
+      "notes": "README says full support."
+    },
+    {
+      "id": "distant-horizons",
+      "name": "Distant Horizons",
+      "type": "mod",
+      "notes": "Repository documentation describes support as experimental."
+    }
+  ],
+  "confirmedCompatible": [
+    {
+      "name": "Atmospheric Shaders",
+      "notes": "Explicitly documented in README as the only fully supported shader pack."
+    },
+    {
+      "name": "Project Atmosphere",
+      "notes": "Explicitly documented in README as supported."
+    }
+  ],
+  "confirmedIncompatible": [],
+  "notes": [
+    "Other shader packs are not officially supported. README says they behave as if OFSC were not installed.",
+    "Distant Horizons is present in source and docs, but should be treated as experimental rather than fully confirmed compatibility.",
+    "Official compatibility for Valkyrien Skies, Eureka, and other third-party mods is UNKNOWN in repository documentation."
+  ]
+}

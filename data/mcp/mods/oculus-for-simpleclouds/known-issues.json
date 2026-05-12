@@ -1,0 +1,40 @@
+﻿{
+  "issues": [
+    {
+      "id": "unsupported-shader-packs",
+      "title": "Only Atmospheric Shaders is officially supported",
+      "affectedVersions": [
+        "1.0.0"
+      ],
+      "symptoms": [
+        "OFSC-specific cloud integration does not apply when another shader pack is selected.",
+        "Visual issues may appear while the base shader pack still loads."
+      ],
+      "workarounds": [
+        "Use Atmospheric Shaders for the officially supported shader workflow.",
+        "Treat other shader packs as unsupported and do not report their visual differences as OFSC support regressions."
+      ],
+      "status": "open",
+      "fixedIn": "UNKNOWN",
+      "sourceType": "official"
+    },
+    {
+      "id": "distant-horizons-experimental",
+      "title": "Distant Horizons support is experimental",
+      "affectedVersions": [
+        "1.0.0"
+      ],
+      "symptoms": [
+        "Clouds may disappear, ignore nearby terrain depth, or otherwise render incorrectly when Distant Horizons is present.",
+        "Shader-aware cloud rendering may conflict with the Distant Horizons cloud/depth pipeline."
+      ],
+      "workarounds": [
+        "Disable Distant Horizons while troubleshooting OFSC rendering issues.",
+        "Re-test the setup without shaders or without Distant Horizons to isolate the conflict."
+      ],
+      "status": "open",
+      "fixedIn": "UNKNOWN",
+      "sourceType": "official"
+    }
+  ]
+}
