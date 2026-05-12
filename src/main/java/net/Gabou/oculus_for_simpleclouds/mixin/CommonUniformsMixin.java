@@ -9,6 +9,7 @@ import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
+import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
@@ -99,6 +100,68 @@ public class CommonUniformsMixin {
                 "sc_CloudHeight",
                 () -> SimpleCloudsUniforms.prepareCloudLayerTexture()
                         .map(SimpleCloudsUniforms.CloudLayerTextureState::cloudHeight)
+                        .orElse(0.0F)
+        );
+
+        uniforms.uniform1i(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowMap",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::textureUnit)
+                        .orElse(0)
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowAvailable",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap().isPresent() ? 1.0F : 0.0F
+        );
+
+        uniforms.uniform2f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowTexSize",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(state -> new Vector2f(state.textureSize(), state.textureSize()))
+                        .orElse(new Vector2f(0.0F, 0.0F))
+        );
+
+        uniforms.uniformMatrix(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowProjMat",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::projMat)
+                        .orElseGet(Matrix4f::new)
+        );
+
+        uniforms.uniformMatrix(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowModelViewMat",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::modelViewMat)
+                        .orElseGet(Matrix4f::new)
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowSpan",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::shadowSpan)
+                        .orElse(0.0F)
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowMinRadius",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::minimumRadius)
+                        .orElse(0.0F)
+        );
+
+        uniforms.uniform1f(
+                UniformUpdateFrequency.PER_FRAME,
+                "sc_RealCloudShadowFadeDistance",
+                () -> SimpleCloudsUniforms.prepareRealCloudShadowMap()
+                        .map(SimpleCloudsUniforms.RealCloudShadowMapState::fadeDistance)
                         .orElse(0.0F)
         );
 

@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 
 public final class SimpleCloudsSunLighting {
     private static final Logger LOGGER = LogManager.getLogger("oculus_for_simpleclouds/SimpleCloudsSunLighting");
+    private static final boolean DEBUG_SUN_INPUTS = Boolean.getBoolean("ofsc.debug.sunInputs");
     private static final float DAY_TICKS = 24000.0F;
     private static final float SUNRISE_CENTER_TICKS = 0.0F;
     private static final float SUNSET_CENTER_TICKS = 12000.0F;
@@ -30,6 +31,29 @@ public final class SimpleCloudsSunLighting {
     private static final float DEFAULT_SUN_COLOR_R = 1.0F;
     private static final float DEFAULT_SUN_COLOR_G = 1.0F;
     private static final float DEFAULT_SUN_COLOR_B = 1.0F;
+    private static ClientLevel cachedLevel = null;
+    private static long cachedDayTime = Long.MIN_VALUE;
+    private static float cachedPartialTick = Float.NaN;
+    private static double cachedCameraX = Double.NaN;
+    private static double cachedCameraY = Double.NaN;
+    private static double cachedCameraZ = Double.NaN;
+    private static double cachedSkyX = 0.0D;
+    private static double cachedSkyY = 0.0D;
+    private static double cachedSkyZ = 0.0D;
+    private static boolean cachedHasSunriseColor = false;
+    private static float cachedSunriseR = 0.0F;
+    private static float cachedSunriseG = 0.0F;
+    private static float cachedSunriseB = 0.0F;
+    private static float cachedSunriseA = 0.0F;
+    private static float cachedSunDirX = DEFAULT_SUN_DIR_X;
+    private static float cachedSunDirY = DEFAULT_SUN_DIR_Y;
+    private static float cachedSunDirZ = DEFAULT_SUN_DIR_Z;
+    private static float cachedSunColorR = DEFAULT_SUN_COLOR_R;
+    private static float cachedSunColorG = DEFAULT_SUN_COLOR_G;
+    private static float cachedSunColorB = DEFAULT_SUN_COLOR_B;
+    private static float cachedSunWarmth = 0.0F;
+    private static float cachedTimeOfDay = 0.0F;
+    private static float cachedSunAngleTurns = 0.0F;
 
     private SimpleCloudsSunLighting() {
     }
@@ -39,79 +63,103 @@ public final class SimpleCloudsSunLighting {
             return;
         }
 
-        float sunDirX = DEFAULT_SUN_DIR_X;
-        float sunDirY = DEFAULT_SUN_DIR_Y;
-        float sunDirZ = DEFAULT_SUN_DIR_Z;
-        float sunColorR = DEFAULT_SUN_COLOR_R;
-        float sunColorG = DEFAULT_SUN_COLOR_G;
-        float sunColorB = DEFAULT_SUN_COLOR_B;
-        float sunWarmth = 0.0F;
-        float timeOfDay = 0.0F;
-        float sunAngleTurns = 0.0F;
+        updateCachedInputs();
+        setVec3(shader, "SunDirection", cachedSunDirX, cachedSunDirY, cachedSunDirZ);
+        setVec3(shader, "SunColor", cachedSunColorR, cachedSunColorG, cachedSunColorB);
+        setFloat(shader, "SunWarmth", cachedSunWarmth);
+    }
 
+    private static void updateCachedInputs() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc != null && mc.level != null) {
-            ClientLevel level = mc.level;
-            float partialTick = mc.getFrameTime();
-            timeOfDay = level.getTimeOfDay(partialTick);
-            float dayTicks = positiveModulo((float)(level.getDayTime() % (long)DAY_TICKS) + partialTick, DAY_TICKS);
-            float twilightStrength = Math.max(
-                computeTwilightStrength(dayTicks, SUNRISE_CENTER_TICKS),
-                computeTwilightStrength(dayTicks, SUNSET_CENTER_TICKS)
-            );
-            sunAngleTurns = getSunAngle(timeOfDay);
-            float sunAngle = sunAngleTurns * TWO_PI;
-
-            sunDirY = -Mth.cos(sunAngle);
-            sunDirZ = Mth.sin(sunAngle);
-
-            float sunLength = Mth.sqrt(sunDirX * sunDirX + sunDirY * sunDirY + sunDirZ * sunDirZ);
-            if (sunLength > EPSILON) {
-                sunDirX /= sunLength;
-                sunDirY /= sunLength;
-                sunDirZ /= sunLength;
-            }
-
-            Vec3 cameraPos = mc.gameRenderer != null ? mc.gameRenderer.getMainCamera().getPosition() : Vec3.ZERO;
-            Vec3 skyColor = level.getSkyColor(cameraPos, partialTick);
-            sunColorR = Mth.clamp((float)skyColor.x, 0.0F, 1.0F);
-            sunColorG = Mth.clamp((float)skyColor.y, 0.0F, 1.0F);
-            sunColorB = Mth.clamp((float)skyColor.z, 0.0F, 1.0F);
-            sunWarmth = computeWarmth(sunColorR, sunColorG, sunColorB);
-
-            float[] sunriseColor = level.effects().getSunriseColor(timeOfDay, partialTick);
-            if (sunriseColor != null && sunriseColor.length >= 4) {
-                float sunriseStrength = Mth.clamp(sunriseColor[3], 0.0F, 1.0F);
-                float broadenedStrength = Math.max(sunriseStrength, twilightStrength * 0.85F);
-                sunWarmth = Math.max(sunWarmth, broadenedStrength);
-                if (sunriseColor.length >= 3) {
-                    float sunriseBlend = Math.max(sunriseStrength, twilightStrength * 0.65F) * 0.75F;
-                    sunColorR = Mth.lerp(sunriseBlend, sunColorR, Mth.clamp(sunriseColor[0], 0.0F, 1.0F));
-                    sunColorG = Mth.lerp(sunriseBlend, sunColorG, Mth.clamp(sunriseColor[1], 0.0F, 1.0F));
-                    sunColorB = Mth.lerp(sunriseBlend, sunColorB, Mth.clamp(sunriseColor[2], 0.0F, 1.0F));
-                }
-            } else {
-                sunWarmth = Math.max(sunWarmth, twilightStrength * 0.80F);
-            }
-
-            logInputsOncePerSecond(
-                timeOfDay,
-                sunAngleTurns,
-                skyColor,
-                sunriseColor,
-                sunColorR,
-                sunColorG,
-                sunColorB,
-                sunWarmth,
-                sunDirX,
-                sunDirY,
-                sunDirZ
-            );
+        if (mc == null || mc.level == null) {
+            cachedLevel = null;
+            cachedDayTime = Long.MIN_VALUE;
+            cachedPartialTick = Float.NaN;
+            cachedSunDirX = DEFAULT_SUN_DIR_X;
+            cachedSunDirY = DEFAULT_SUN_DIR_Y;
+            cachedSunDirZ = DEFAULT_SUN_DIR_Z;
+            cachedSunColorR = DEFAULT_SUN_COLOR_R;
+            cachedSunColorG = DEFAULT_SUN_COLOR_G;
+            cachedSunColorB = DEFAULT_SUN_COLOR_B;
+            cachedSunWarmth = 0.0F;
+            cachedHasSunriseColor = false;
+            return;
         }
 
-        setVec3(shader, "SunDirection", sunDirX, sunDirY, sunDirZ);
-        setVec3(shader, "SunColor", sunColorR, sunColorG, sunColorB);
-        setFloat(shader, "SunWarmth", sunWarmth);
+        ClientLevel level = mc.level;
+        float partialTick = mc.getFrameTime();
+        long dayTime = level.getDayTime();
+        Vec3 cameraPos = mc.gameRenderer != null ? mc.gameRenderer.getMainCamera().getPosition() : Vec3.ZERO;
+        if (level == cachedLevel
+            && dayTime == cachedDayTime
+            && Float.compare(partialTick, cachedPartialTick) == 0
+            && Double.compare(cameraPos.x, cachedCameraX) == 0
+            && Double.compare(cameraPos.y, cachedCameraY) == 0
+            && Double.compare(cameraPos.z, cachedCameraZ) == 0) {
+            return;
+        }
+
+        cachedLevel = level;
+        cachedDayTime = dayTime;
+        cachedPartialTick = partialTick;
+        cachedCameraX = cameraPos.x;
+        cachedCameraY = cameraPos.y;
+        cachedCameraZ = cameraPos.z;
+
+        cachedTimeOfDay = level.getTimeOfDay(partialTick);
+        float dayTicks = positiveModulo((float)(dayTime % (long)DAY_TICKS) + partialTick, DAY_TICKS);
+        float twilightStrength = Math.max(
+            computeTwilightStrength(dayTicks, SUNRISE_CENTER_TICKS),
+            computeTwilightStrength(dayTicks, SUNSET_CENTER_TICKS)
+        );
+        cachedSunAngleTurns = getSunAngle(cachedTimeOfDay);
+        float sunAngle = cachedSunAngleTurns * TWO_PI;
+
+        cachedSunDirX = DEFAULT_SUN_DIR_X;
+        cachedSunDirY = -Mth.cos(sunAngle);
+        cachedSunDirZ = Mth.sin(sunAngle);
+
+        float sunLength = Mth.sqrt(cachedSunDirX * cachedSunDirX + cachedSunDirY * cachedSunDirY + cachedSunDirZ * cachedSunDirZ);
+        if (sunLength > EPSILON) {
+            cachedSunDirX /= sunLength;
+            cachedSunDirY /= sunLength;
+            cachedSunDirZ /= sunLength;
+        }
+
+        Vec3 skyColor = level.getSkyColor(cameraPos, partialTick);
+        cachedSkyX = skyColor.x;
+        cachedSkyY = skyColor.y;
+        cachedSkyZ = skyColor.z;
+        cachedSunColorR = Mth.clamp((float)skyColor.x, 0.0F, 1.0F);
+        cachedSunColorG = Mth.clamp((float)skyColor.y, 0.0F, 1.0F);
+        cachedSunColorB = Mth.clamp((float)skyColor.z, 0.0F, 1.0F);
+        cachedSunWarmth = computeWarmth(cachedSunColorR, cachedSunColorG, cachedSunColorB);
+
+        float[] sunriseColor = level.effects().getSunriseColor(cachedTimeOfDay, partialTick);
+        cachedHasSunriseColor = sunriseColor != null && sunriseColor.length >= 4;
+        if (cachedHasSunriseColor) {
+            cachedSunriseR = sunriseColor[0];
+            cachedSunriseG = sunriseColor[1];
+            cachedSunriseB = sunriseColor[2];
+            cachedSunriseA = sunriseColor[3];
+            float sunriseStrength = Mth.clamp(cachedSunriseA, 0.0F, 1.0F);
+            float broadenedStrength = Math.max(sunriseStrength, twilightStrength * 0.85F);
+            cachedSunWarmth = Math.max(cachedSunWarmth, broadenedStrength);
+            float sunriseBlend = Math.max(sunriseStrength, twilightStrength * 0.65F) * 0.75F;
+            cachedSunColorR = Mth.lerp(sunriseBlend, cachedSunColorR, Mth.clamp(cachedSunriseR, 0.0F, 1.0F));
+            cachedSunColorG = Mth.lerp(sunriseBlend, cachedSunColorG, Mth.clamp(cachedSunriseG, 0.0F, 1.0F));
+            cachedSunColorB = Mth.lerp(sunriseBlend, cachedSunColorB, Mth.clamp(cachedSunriseB, 0.0F, 1.0F));
+        } else {
+            cachedSunriseR = 0.0F;
+            cachedSunriseG = 0.0F;
+            cachedSunriseB = 0.0F;
+            cachedSunriseA = 0.0F;
+            cachedSunWarmth = Math.max(cachedSunWarmth, twilightStrength * 0.80F);
+        }
+
+        if (DEBUG_SUN_INPUTS) {
+            logInputsOncePerSecond();
+        }
     }
 
     private static float getSunAngle(float timeOfDay) {
@@ -141,34 +189,34 @@ public final class SimpleCloudsSunLighting {
         return Mth.clamp(warmth, 0.0F, 1.0F);
     }
 
-    private static void logInputsOncePerSecond(float timeOfDay, float sunAngleTurns, Vec3 skyColor, float[] sunriseColor, float sunColorR, float sunColorG, float sunColorB, float sunWarmth, float sunDirX, float sunDirY, float sunDirZ) {
+    private static void logInputsOncePerSecond() {
         long now = System.currentTimeMillis();
         if (now - lastLogTimeMs < 1000L) {
             return;
         }
 
         lastLogTimeMs = now;
-        String sunriseText = sunriseColor != null && sunriseColor.length >= 4
-            ? String.format(Locale.ROOT, "[%.3f, %.3f, %.3f, %.3f]", sunriseColor[0], sunriseColor[1], sunriseColor[2], sunriseColor[3])
+        String sunriseText = cachedHasSunriseColor
+            ? String.format(Locale.ROOT, "[%.3f, %.3f, %.3f, %.3f]", cachedSunriseR, cachedSunriseG, cachedSunriseB, cachedSunriseA)
             : "null";
         String message = String.format(
             Locale.ROOT,
             "SC sun lighting inputs timeOfDay=%.3f sunAngleTurns=%.3f skyColor=(%.3f, %.3f, %.3f) sunriseColor=%s finalSunColor=(%.3f, %.3f, %.3f) sunWarmth=%.3f computedLightDir=(%.3f, %.3f, %.3f)",
-            timeOfDay,
-            sunAngleTurns,
-            skyColor.x,
-            skyColor.y,
-            skyColor.z,
+            cachedTimeOfDay,
+            cachedSunAngleTurns,
+            cachedSkyX,
+            cachedSkyY,
+            cachedSkyZ,
             sunriseText,
-            sunColorR,
-            sunColorG,
-            sunColorB,
-            sunWarmth,
-            sunDirX,
-            sunDirY,
-            sunDirZ
+            cachedSunColorR,
+            cachedSunColorG,
+            cachedSunColorB,
+            cachedSunWarmth,
+            cachedSunDirX,
+            cachedSunDirY,
+            cachedSunDirZ
         );
-        LOGGER.info(message);
+        LOGGER.debug(message);
     }
 
     private static void setVec3(ShaderInstance shader, String name, float x, float y, float z) {

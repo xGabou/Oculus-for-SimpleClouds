@@ -1,15 +1,25 @@
 package net.Gabou.oculus_for_simpleclouds;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.nonamecrackers2.simpleclouds.api.SimpleCloudsAPI;
 import dev.nonamecrackers2.simpleclouds.api.common.world.ScAPICloudManager;
+import dev.nonamecrackers2.simpleclouds.client.framebuffer.ShadowMapBuffer;
+import dev.nonamecrackers2.simpleclouds.client.mesh.chunk.MeshChunk;
+import dev.nonamecrackers2.simpleclouds.client.mesh.generator.CloudMeshGenerator;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
+import dev.nonamecrackers2.simpleclouds.client.shader.SimpleCloudsShaders;
+import dev.nonamecrackers2.simpleclouds.client.shader.SingleSSBOShaderInstance;
 import dev.nonamecrackers2.simpleclouds.common.cloud.CloudType;
 import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
+import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.common.world.CloudManager;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
@@ -17,12 +27,15 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.commons.lang3.tuple.Pair;
+import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL12C;
 import org.lwjgl.opengl.GL20C;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL43;
 
 import java.util.Optional;
 
@@ -142,6 +155,18 @@ public final class SimpleCloudsUniforms {
         return CloudLayerTexture.prepare();
     }
 
+    public static Optional<RealCloudShadowMapState> prepareRealCloudShadowMap() {
+        return RealCloudShadowMap.prepare();
+    }
+
+    private static void restoreState(int capability, boolean enabled) {
+        if (enabled) {
+            GL11C.glEnable(capability);
+        } else {
+            GL11C.glDisable(capability);
+        }
+    }
+
 
     private static float computeStorminess(CloudManager<ClientLevel> manager, CloudType type, Vec3 cameraPos, float fade) {
         if (manager.shouldUseVanillaWeather() || !type.weatherType().causesDarkening()) {
@@ -201,6 +226,322 @@ public final class SimpleCloudsUniforms {
             float scrollZ,
             float cloudHeight
     ) {
+    }
+
+    public record RealCloudShadowMapState(
+            int textureId,
+            int textureUnit,
+            int textureSize,
+            Matrix4f projMat,
+            Matrix4f modelViewMat,
+            float shadowSpan,
+            float minimumRadius,
+            float fadeDistance
+    ) {
+    }
+
+    private static final class RealCloudShadowMap {
+        private static final Logger LOGGER = LogManager.getLogger("oculus_for_simpleclouds/RealCloudShadowMap");
+        private static final int PREFERRED_TEXTURE_UNIT = 13;
+        private static final float SHADOW_NEAR = 0.0F;
+        private static final float SHADOW_FAR = 10000.0F;
+        private static final float SHADOW_FADE_DISTANCE = 1028.0F;
+
+        private static ShadowMapBuffer fallbackShadowMap;
+        private static int textureUnit = -1;
+        private static boolean warnedTextureUnitRange;
+
+        private static ClientLevel cachedLevel;
+        private static long cachedDayTime = Long.MIN_VALUE;
+        private static float cachedTickDelta = Float.NaN;
+        private static double cachedCameraX = Double.NaN;
+        private static double cachedCameraY = Double.NaN;
+        private static double cachedCameraZ = Double.NaN;
+        private static int cachedSpan = -1;
+        private static boolean cachedValid;
+        private static final Matrix4f cachedProjMat = new Matrix4f();
+        private static final Matrix4f cachedModelViewMat = new Matrix4f();
+        private static int cachedTextureId = -1;
+        private static int cachedTextureSize = 0;
+        private static float cachedShadowSpan = 0.0F;
+        private static float cachedMinimumRadius = 0.0F;
+        private static float cachedFadeDistance = SHADOW_FADE_DISTANCE;
+
+        private static Optional<RealCloudShadowMapState> prepare() {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null || mc.gameRenderer == null || mc.gameRenderer.getMainCamera() == null) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+            if (!SimpleCloudsConfig.CLIENT.renderClouds.get()) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            Optional<SimpleCloudsRenderer> rendererOpt = SimpleCloudsRenderer.getOptionalInstance();
+            if (rendererOpt.isEmpty()) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            SimpleCloudsRenderer renderer = rendererOpt.get();
+            float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
+            Vec3 cameraPos = mc.gameRenderer.getMainCamera().getPosition();
+
+            Optional<RealCloudShadowMapState> rendererState = tryUseRendererShadowMap(renderer, mc);
+            if (rendererState.isPresent()) {
+                return rendererState;
+            }
+
+            Optional<CloudManager<ClientLevel>> managerOpt = tryGetManager(mc.level);
+            if (managerOpt.isEmpty()) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            CloudMeshGenerator generator = renderer.getMeshGenerator();
+            if (generator == null || !generator.canRender() || generator.getSideMesh() == null) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            int span = computeShadowSpan(generator);
+            if (span <= 0) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            if (!ensureFallbackResources(span)) {
+                cachedValid = false;
+                return Optional.empty();
+            }
+
+            if (shouldUpdate(mc.level, tickDelta, cameraPos, span)) {
+                if (!renderFallbackShadowMap(renderer, generator, managerOpt.get(), cameraPos, tickDelta)) {
+                    cachedValid = false;
+                    return Optional.empty();
+                }
+            }
+
+            if (!cachedValid) {
+                return Optional.empty();
+            }
+
+            int unit = resolveTextureUnit();
+            bindTextureUnit(unit, cachedTextureId);
+            return Optional.of(new RealCloudShadowMapState(
+                    cachedTextureId,
+                    unit,
+                    cachedTextureSize,
+                    new Matrix4f(cachedProjMat),
+                    new Matrix4f(cachedModelViewMat),
+                    cachedShadowSpan,
+                    cachedMinimumRadius,
+                    cachedFadeDistance
+            ));
+        }
+
+        private static Optional<RealCloudShadowMapState> tryUseRendererShadowMap(SimpleCloudsRenderer renderer, Minecraft mc) {
+            Optional<ShadowMapBuffer> shadowMapOpt = renderer.getShadowMap();
+            PoseStack shadowStack = renderer.getShadowMapStack();
+            if (shadowMapOpt.isEmpty() || shadowStack == null) {
+                return Optional.empty();
+            }
+
+            ShadowMapBuffer shadowMap = shadowMapOpt.get();
+            int unit = resolveTextureUnit();
+            bindTextureUnit(unit, shadowMap.getDepthTexId());
+
+            return Optional.of(new RealCloudShadowMapState(
+                    shadowMap.getDepthTexId(),
+                    unit,
+                    shadowMap.getTexWidth(),
+                    new Matrix4f(shadowMap.getProjMatrix()),
+                    new Matrix4f(shadowStack.last().pose()),
+                    (float) Math.min(shadowMap.getViewWidth(), shadowMap.getViewHeight()),
+                    mc.gameRenderer.getRenderDistance(),
+                    SHADOW_FADE_DISTANCE
+            ));
+        }
+
+        private static boolean shouldUpdate(ClientLevel level, float tickDelta, Vec3 cameraPos, int span) {
+            if (!cachedValid || cachedTextureId == -1) {
+                return true;
+            }
+            return level != cachedLevel
+                    || level.getDayTime() != cachedDayTime
+                    || Float.compare(tickDelta, cachedTickDelta) != 0
+                    || Double.compare(cameraPos.x, cachedCameraX) != 0
+                    || Double.compare(cameraPos.y, cachedCameraY) != 0
+                    || Double.compare(cameraPos.z, cachedCameraZ) != 0
+                    || cachedSpan != span;
+        }
+
+        private static int computeShadowSpan(CloudMeshGenerator generator) {
+            int meshSpan = generator.getLodConfig().getEffectiveChunkSpan() * SimpleCloudsConstants.CHUNK_SIZE * SimpleCloudsConstants.CLOUD_SCALE;
+            int configuredSpan = SimpleCloudsConfig.CLIENT.shadowDistance.get() * 2;
+            return Math.min(configuredSpan, meshSpan);
+        }
+
+        private static boolean ensureFallbackResources(int span) {
+            if (fallbackShadowMap != null && cachedSpan == span) {
+                return true;
+            }
+
+            if (fallbackShadowMap != null) {
+                fallbackShadowMap.close();
+                fallbackShadowMap = null;
+            }
+
+            try {
+                fallbackShadowMap = new ShadowMapBuffer(
+                        span,
+                        span,
+                        SimpleCloudsRenderer.SHADOW_MAP_SIZE,
+                        SimpleCloudsRenderer.SHADOW_MAP_SIZE,
+                        SHADOW_NEAR,
+                        SHADOW_FAR,
+                        false,
+                        true
+                );
+                cachedSpan = span;
+                return true;
+            } catch (RuntimeException ex) {
+                LOGGER.error("Failed creating OFSC fallback cloud shadow map", ex);
+                cachedSpan = -1;
+                return false;
+            }
+        }
+
+        private static boolean renderFallbackShadowMap(SimpleCloudsRenderer renderer, CloudMeshGenerator generator, CloudManager<ClientLevel> manager, Vec3 cameraPos, float tickDelta) {
+            ShadowMapBuffer shadowMap = fallbackShadowMap;
+            SingleSSBOShaderInstance shader = SimpleCloudsShaders.getCloudsShadowMapShader();
+            if (shadowMap == null || shader == null || generator.getSideMesh() == null) {
+                return false;
+            }
+
+            PoseStack baseStack = createShadowMapStack(shadowMap, manager.getCloudHeight(), cameraPos, renderer, tickDelta);
+            Matrix4f baseModelView = new Matrix4f(baseStack.last().pose());
+
+            int previousFramebuffer = GL11C.glGetInteger(GL30C.GL_FRAMEBUFFER_BINDING);
+            int previousProgram = GL11C.glGetInteger(GL20C.GL_CURRENT_PROGRAM);
+            int previousVao = GL11C.glGetInteger(GL30C.GL_VERTEX_ARRAY_BINDING);
+            int[] viewport = new int[4];
+            GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
+            boolean blendEnabled = GL11C.glIsEnabled(GL11C.GL_BLEND);
+            boolean depthTestEnabled = GL11C.glIsEnabled(GL11C.GL_DEPTH_TEST);
+            boolean cullEnabled = GL11C.glIsEnabled(GL11C.GL_CULL_FACE);
+            boolean scissorEnabled = GL11C.glIsEnabled(GL11C.GL_SCISSOR_TEST);
+            boolean depthMaskEnabled = GL11C.glGetBoolean(GL11C.GL_DEPTH_WRITEMASK);
+
+            try {
+                RenderSystem.disableBlend();
+                RenderSystem.enableDepthTest();
+                RenderSystem.disableCull();
+                RenderSystem.depthMask(true);
+                RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+
+                baseStack.pushPose();
+                renderer.translateClouds(baseStack, 0.0D, 0.0D, 0.0D);
+
+                RenderSystem.setShader(() -> shader);
+                SimpleCloudsRenderer.prepareShader(shader, baseStack.last().pose(), shadowMap.getProjMatrix(), renderer.getFogStart(), renderer.getFogEnd());
+                shader.apply();
+
+                shadowMap.bind();
+                shadowMap.clear(Minecraft.ON_OSX);
+
+                Frustum frustum = null;
+                generator.forRenderableMeshChunks(frustum, MeshChunk::getOpaqueBuffers, (chunk, opaqueBuffers) -> {
+                    GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, shader.getShaderStorageBinding(), opaqueBuffers.getBufferId());
+                    generator.getSideMesh().drawInstanced(opaqueBuffers.getElementCount());
+                });
+
+                GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, shader.getShaderStorageBinding(), 0);
+                GL30.glBindVertexArray(0);
+                shadowMap.unbind();
+                shader.clear();
+                baseStack.popPose();
+
+                cachedLevel = Minecraft.getInstance().level;
+                cachedDayTime = cachedLevel != null ? cachedLevel.getDayTime() : Long.MIN_VALUE;
+                cachedTickDelta = tickDelta;
+                cachedCameraX = cameraPos.x;
+                cachedCameraY = cameraPos.y;
+                cachedCameraZ = cameraPos.z;
+                cachedTextureId = shadowMap.getDepthTexId();
+                cachedTextureSize = shadowMap.getTexWidth();
+                cachedShadowSpan = Math.min(shadowMap.getViewWidth(), shadowMap.getViewHeight());
+                cachedMinimumRadius = Minecraft.getInstance().gameRenderer.getRenderDistance();
+                cachedFadeDistance = SHADOW_FADE_DISTANCE;
+                cachedProjMat.set(shadowMap.getProjMatrix());
+                cachedModelViewMat.set(baseModelView);
+                cachedValid = true;
+                return true;
+            } catch (RuntimeException ex) {
+                LOGGER.error("Failed rendering OFSC fallback cloud shadow map", ex);
+                cachedValid = false;
+                return false;
+            } finally {
+                GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, previousFramebuffer);
+                GL20C.glUseProgram(previousProgram);
+                GL30C.glBindVertexArray(previousVao);
+                GL11C.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+                restoreState(GL11C.GL_BLEND, blendEnabled);
+                restoreState(GL11C.GL_DEPTH_TEST, depthTestEnabled);
+                restoreState(GL11C.GL_CULL_FACE, cullEnabled);
+                restoreState(GL11C.GL_SCISSOR_TEST, scissorEnabled);
+                RenderSystem.depthMask(depthMaskEnabled);
+            }
+        }
+
+        private static PoseStack createShadowMapStack(ShadowMapBuffer shadowMap, int cloudHeight, Vec3 cameraPos, SimpleCloudsRenderer renderer, float partialTick) {
+            PoseStack stack = new PoseStack();
+            stack.setIdentity();
+            double depthCenter = ((double) shadowMap.getNear() + (double) shadowMap.getFar()) * -0.5D;
+            stack.translate((double) shadowMap.getViewWidth() / 2.0D, (double) shadowMap.getViewHeight() / 2.0D, depthCenter);
+            stack.mulPose(Axis.XP.rotationDegrees(90.0F));
+            stack.mulPose(Axis.ZN.rotationDegrees(determineShadowMapAngle(renderer, partialTick)));
+
+            float chunkSizeUpscaled = (float) SimpleCloudsConstants.CHUNK_SIZE * (float) SimpleCloudsConstants.CLOUD_SCALE;
+            float camOffsetX = (float) Mth.floor(cameraPos.x / chunkSizeUpscaled) * chunkSizeUpscaled;
+            float camOffsetZ = (float) Mth.floor(cameraPos.z / chunkSizeUpscaled) * chunkSizeUpscaled;
+            stack.translate(-camOffsetX, -cloudHeight, -camOffsetZ);
+            return stack;
+        }
+
+        private static float determineShadowMapAngle(SimpleCloudsRenderer renderer, float partialTick) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) {
+                return 0.0F;
+            }
+            float timeOfDay = mc.level.getTimeOfDay(partialTick);
+            return 45.0F * Mth.sin(2.0F * (float) Math.PI * timeOfDay);
+        }
+
+        private static void bindTextureUnit(int targetTextureUnit, int textureId) {
+            int previousActiveTexture = GL11C.glGetInteger(GL13C.GL_ACTIVE_TEXTURE);
+            GL13C.glActiveTexture(GL13C.GL_TEXTURE0 + targetTextureUnit);
+            GL11C.glBindTexture(GL11C.GL_TEXTURE_2D, textureId);
+            GL13C.glActiveTexture(previousActiveTexture);
+        }
+
+        private static int resolveTextureUnit() {
+            if (textureUnit >= 0) {
+                return textureUnit;
+            }
+            int maxUnits = GL11C.glGetInteger(GL20C.GL_MAX_TEXTURE_IMAGE_UNITS);
+            if (PREFERRED_TEXTURE_UNIT < 0 || PREFERRED_TEXTURE_UNIT >= maxUnits) {
+                if (!warnedTextureUnitRange) {
+                    LOGGER.warn("Preferred texture unit {} is out of range for {} texture units, falling back to unit 0", PREFERRED_TEXTURE_UNIT, maxUnits);
+                    warnedTextureUnitRange = true;
+                }
+                textureUnit = 0;
+            } else {
+                textureUnit = PREFERRED_TEXTURE_UNIT;
+            }
+            return textureUnit;
+        }
     }
 
     private static final class CloudLayerTexture {
@@ -506,14 +847,6 @@ public final class SimpleCloudsUniforms {
             int location = GL20C.glGetUniformLocation(program, name);
             if (location >= 0) {
                 GL20C.glUniform2f(location, x, y);
-            }
-        }
-
-        private static void restoreState(int capability, boolean enabled) {
-            if (enabled) {
-                GL11C.glEnable(capability);
-            } else {
-                GL11C.glDisable(capability);
             }
         }
 

@@ -14,6 +14,7 @@
     "SimpleCloudsDepthCopyBypassMixin",
     "SimpleCloudsCopyDepthGuardMixin",
     "SimpleCloudsOpaqueInsideMixin",
+    "MixinSimpleCloudsRenderer",
     "SimpleCloudsSunLightingMixin",
     "SimpleCloudsPipelineSelectMixin",
     "SimpleCloudsForcePipelineMixin",

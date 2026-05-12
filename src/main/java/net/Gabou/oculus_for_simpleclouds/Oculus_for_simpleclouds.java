@@ -28,6 +28,8 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
+import net.Gabou.oculus_for_simpleclouds.interiorfog.InteriorCloudClientEvents;
+import net.Gabou.oculus_for_simpleclouds.interiorfog.InteriorCloudConfig;
 import org.slf4j.Logger;
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -42,11 +44,12 @@ public class Oculus_for_simpleclouds {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public Oculus_for_simpleclouds(FMLJavaModLoadingContext context) {
-
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, InteriorCloudConfig.SPEC, MODID + "-client.toml");
         context.getModEventBus().addListener(this::clientInit);
-
     }
+
     private void clientInit(FMLClientSetupEvent event) {
+        MinecraftForge.EVENT_BUS.register(InteriorCloudClientEvents.class);
         if (CompatHelper.isOculusLoaded() && !overWriteLogic) {
             event.enqueueWork(SimpleCloudsIrisWeatherCompat::init);
         }

@@ -27,6 +27,13 @@ public class ShaderPropertiesMixin {
         builder.addVariable("vec4", "sc_State", "vec4(0, 0, 0, 0)", true);
         builder.addVariable("vec4", "sc_Type", "vec4(0, 0, 0, 0)", true);
         builder.addVariable("float", "sc_CloudShadowFactor", "0.0", true);
+        builder.addVariable("float", "sc_RealCloudShadowAvailable", "0.0", true);
+        builder.addVariable("vec2", "sc_RealCloudShadowTexSize", "vec2(0.0, 0.0)", true);
+        builder.addVariable("mat4", "sc_RealCloudShadowProjMat", "mat4(1.0)", true);
+        builder.addVariable("mat4", "sc_RealCloudShadowModelViewMat", "mat4(1.0)", true);
+        builder.addVariable("float", "sc_RealCloudShadowSpan", "0.0", true);
+        builder.addVariable("float", "sc_RealCloudShadowMinRadius", "0.0", true);
+        builder.addVariable("float", "sc_RealCloudShadowFadeDistance", "0.0", true);
         // Sampler uniforms are bound directly in ExtendedShaderMixin.
     }
 
