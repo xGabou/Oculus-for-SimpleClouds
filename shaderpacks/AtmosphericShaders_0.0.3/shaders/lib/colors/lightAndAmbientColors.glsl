@@ -80,26 +80,27 @@
             #else
                     float storm    = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
                     float thick    = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
+                    float scLightAmbientSunLeak  = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
                     float stormNorm  = clamp(storm / 0.6, 0.0, 1.0);
                     float stormCurve = pow(stormNorm, 1.45);
 
-                    float lightDim   = mix(1.0, 0.28, stormCurve);
-                    float ambientDim = mix(1.0, 0.40, stormCurve);
+                    float lightDim   = mix(1.0, mix(0.28, 0.42, scLightAmbientSunLeak), stormCurve);
+                    float ambientDim = mix(1.0, mix(0.40, 0.52, scLightAmbientSunLeak), stormCurve);
 
                     float thickDimLight   = mix(1.0, 0.70, thick);
                     float thickDimAmbient = mix(1.0, 0.80, thick);
 
                     vec3 lightColor =
                         baseLightColor
-                        * mix(1.0, 0.45, scStormDark)
+                        * mix(1.0, mix(0.45, 0.58, scLightAmbientSunLeak), scStormDark)
                         * lightThicknessBoost
                         * lightDim
                         * thickDimLight;
 
                     vec3 ambientColor =
                         baseAmbientColor
-                        * mix(1.0, 0.7, scStormDark)
+                        * mix(1.0, mix(0.70, 0.78, scLightAmbientSunLeak), scStormDark)
                         * ambientThicknessBoost
                         * ambientDim
                         * thickDimAmbient;

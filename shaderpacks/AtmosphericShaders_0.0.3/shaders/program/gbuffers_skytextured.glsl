@@ -25,7 +25,8 @@ flat in vec4 glColor;
     float SdotU = dot(sunVec, upVec);
     #if USE_SC
         float scDark = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
-        float scMask = 1.0 - smoothstep(0.15, 0.35, scDark);
+        float scSkyTexSunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
+        float scMask = max(1.0 - smoothstep(0.15, 0.35, scDark), 0.18 * scSkyTexSunLeak);
         float sunVisibility  = clamp(SdotU + 0.0625, 0.0, 0.125) / 0.125*scMask;
         float sunVisibility2 = sunVisibility * sunVisibility * scMask;
     #else

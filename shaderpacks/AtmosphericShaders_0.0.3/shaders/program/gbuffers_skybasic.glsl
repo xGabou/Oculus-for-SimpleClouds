@@ -137,8 +137,9 @@ void main() {
                     float stormCurve = pow(stormNorm, 1.35);
                     float thickCurve = pow(thickRaw, 1.15);
                     float scBlock    = clamp(stormCurve * 0.95 + thickCurve * 0.75, 0.0, 1.0);
+                    float sunLeak    = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
-                    sunMoonMixer *= 1.0 - scBlock;
+                    sunMoonMixer *= max(1.0 - scBlock, 0.18 * sunLeak);
                 }
                 #endif
 

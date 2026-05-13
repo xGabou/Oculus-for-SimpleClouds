@@ -83,6 +83,7 @@ float SampleProceduralCloudDensity(vec3 worldPos, float coverage) {
             }
 
             opacity *= coverage;
+            opacity *= mix(1.0, 0.82, max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor)));
             return clamp(opacity, 0.0, 1.0);
         }
 
@@ -245,7 +246,7 @@ void main() {
 
     #if ATM_CLOUD_SHADOWS == 1 && defined OVERWORLD
         if (cloudShadowMask > 0.001) {
-            color1.rgb *= 1.0 - 0.85 * cloudShadowMask;
+            color1.rgb *= 1.0 - mix(0.85, 0.72, max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor))) * cloudShadowMask;
         }
     #endif
 
@@ -258,7 +259,7 @@ void main() {
 
         #if ATM_CLOUD_SHADOWS == 1 && defined OVERWORLD
             if (cloudShadowMask > 0.001) {
-                color2.rgb *= 1.0 - 0.7 * cloudShadowMask;
+                color2.rgb *= 1.0 - mix(0.70, 0.58, max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor))) * cloudShadowMask;
             }
         #endif
 

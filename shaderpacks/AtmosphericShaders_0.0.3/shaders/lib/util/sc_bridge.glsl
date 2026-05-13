@@ -5,6 +5,18 @@
 #define USE_SC 1
 #define USE_SC_CLOUDS 0
 
+#ifndef SC_REAL_SHADOW_UNIFORMS_DECLARED
+    #define SC_REAL_SHADOW_UNIFORMS_DECLARED
+    uniform sampler2D sc_RealCloudShadowMap;
+    uniform float sc_RealCloudShadowAvailable;
+    uniform vec2  sc_RealCloudShadowTexSize;
+    uniform mat4  sc_RealCloudShadowProjMat;
+    uniform mat4  sc_RealCloudShadowModelViewMat;
+    uniform float sc_RealCloudShadowSpan;
+    uniform float sc_RealCloudShadowMinRadius;
+    uniform float sc_RealCloudShadowFadeDistance;
+#endif
+
 //--------------------------------------------------
 // FULL CLOUDS FEATURE SET (SimpleClouds active)
 //--------------------------------------------------
@@ -49,6 +61,14 @@
     }
 
     float scStormDark = Get_SC_StormDarkness();
+
+    float Get_SC_HighStormLightLeak() {
+        return smoothstep(0.70, 1.0, clamp(Get_SC_StormDarkness(), 0.0, 1.0));
+    }
+
+    float Get_SC_SunTransmissionFloor() {
+        return 0.18 * Get_SC_HighStormLightLeak();
+    }
 
     float Get_SC_ThicknessScale() {
         // Raw 0.0→1.0 remapped to 0.5→1.5
@@ -120,6 +140,17 @@
         return clamp(c, 0.0, 1.0);
     }
 
+    bool SC_HasRealCloudShadowMap() {
+        return sc_RealCloudShadowAvailable > 0.5
+            && sc_RealCloudShadowTexSize.x > 0.5
+            && sc_RealCloudShadowTexSize.y > 0.5
+            && sc_RealCloudShadowSpan > 0.0;
+    }
+
+    bool SC_HasRealCloudShadow() {
+        return SC_HasRealCloudShadowMap();
+    }
+
     //--------------------------------------------------
     // Combined shadow result
     //--------------------------------------------------
@@ -164,6 +195,8 @@
 
     float Get_SC_StormDarkness()         { return 0.0; }
     float Get_SC_ThicknessScale()        { return 1.0; }
+    float Get_SC_HighStormLightLeak()    { return 0.0; }
+    float Get_SC_SunTransmissionFloor()  { return 0.0; }
 
     float Apply_SC_TypeShading(float x) { return x; }
 
@@ -175,6 +208,8 @@
     bool SC_HasCloudLayerTexture()       { return false; }
     vec2 Get_SC_CloudLayerUV()           { return vec2(0.0); }
     float Sample_SC_CloudLayerShadow()   { return -1.0; }
+    bool SC_HasRealCloudShadowMap()      { return false; }
+    bool SC_HasRealCloudShadow()         { return false; }
 
     float Get_SC_FinalShadow()           { return 0.0; }
 

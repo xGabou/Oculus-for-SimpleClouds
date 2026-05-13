@@ -314,7 +314,8 @@ vec4 GetVolumetricLight(inout vec3 color, inout float vlFactor, vec3 translucent
     {
         float scCoverage = clamp(max(Get_SC_StormDarkness(), Get_SC_ThicknessRaw()), 0.0, 1.0);
         float scFade = smoothstep(0.08, 0.35, scCoverage);
-        volumetricLight.rgb *= 1.0 - scFade;
+        float sunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
+        volumetricLight.rgb *= max(1.0 - scFade, 0.12 * sunLeak);
     }
     #endif
     volumetricLight = max(volumetricLight, vec4(0.0));

@@ -14,15 +14,16 @@
 
     #if USE_SC
         float scThickness = Get_SC_ThicknessRaw();
+        float scSkySunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
-        float stormDarkSky      = mix(1.0, 0.28, scStormDark);
-        float stormDarkHorizon  = mix(1.0, 0.42, scStormDark * 1.15);
+        float stormDarkSky      = mix(1.0, mix(0.28, 0.38, scSkySunLeak), scStormDark);
+        float stormDarkHorizon  = mix(1.0, mix(0.42, 0.50, scSkySunLeak), scStormDark * 1.15);
         float stormCoverage     = clamp(scStormDark * scThickness, 0.0, 1.0);
         float stormSunFade      = smoothstep(0.08, 0.6, stormCoverage);
-        float stormSunOcclusion = mix(1.0, 0.04, stormSunFade);
+        float stormSunOcclusion = mix(1.0, mix(0.04, 0.16, scSkySunLeak), stormSunFade);
 
         vec3 scStormTint = mix(vec3(1.0), vec3(0.6, 0.64, 0.72), scStormDark);
-        float scStormBrightness = mix(1.0, 0.55, scStormDark);
+        float scStormBrightness = mix(1.0, mix(0.55, 0.64, scSkySunLeak), scStormDark);
         float scThicknessBlend = mix(0.95, 1.05, scThickness);
     #else
         float scThickness = 0.0;

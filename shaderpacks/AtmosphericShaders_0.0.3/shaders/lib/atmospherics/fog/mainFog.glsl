@@ -1,3 +1,7 @@
+#if USE_SC
+    #include "/lib/util/sc_bridge.glsl"
+#endif
+
 #ifdef ATM_COLOR_MULTS
     #include "/lib/colors/colorMultipliers.glsl"
 #endif
@@ -215,6 +219,7 @@
            #if USE_SC
             {
                 float storm = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
+                float sunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
                 // Base storm curve
                 float stormNorm  = clamp(storm / 0.6, 0.0, 1.0);
@@ -223,23 +228,13 @@
                 float thickMult  = mix(1.0, 0.70, thick);
 
                 // Default SC dimming (kept)
-                float dim = mix(1.0, 0.50, stormCurve) * thickMult;
+                float dim = mix(1.0, mix(0.50, 0.62, sunLeak), stormCurve) * thickMult;
 
                 fogColorM *= dim;
 
-                // *** NEW ***
-                // Hard storm color override:
-                // storm > 0.3 → dark gray
-                // storm > 0.5 → black
                 float darkGrayMask = smoothstep(0.30, 0.50, storm);
-                float blackMask    = smoothstep(0.50, 0.70, storm);
-
-                // Dark gray target
-                vec3 darkGray = vec3(0.12);
-
-                // Blend:
-                fogColorM = mix(fogColorM, darkGray, darkGrayMask);
-                fogColorM = mix(fogColorM, vec3(0.0),  blackMask);
+                vec3 stormFogTarget = mix(vec3(0.12), vec3(0.24, 0.26, 0.30), sunLeak);
+                fogColorM = mix(fogColorM, stormFogTarget, darkGrayMask);
             }
             #endif
 

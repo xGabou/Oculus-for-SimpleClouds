@@ -177,10 +177,11 @@ vec4 GetReflection(vec3 normalM, vec3 viewPos, vec3 nViewPos, vec3 playerPos, fl
             {
                 float storm = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
                 float thick = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
+                float sunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
                 // Base thresholds
                 float darkMask  = smoothstep(0.25, 0.45, storm); // begin darkening
-                float blackMask = smoothstep(0.55, 0.75, storm); // final blackout
+                float blackMask = smoothstep(0.55, 0.75, storm); // deep storm reflection
                 float thickCurve = pow(thick, 1.2);
 
                 // Color curve for correct blue-deep storm tone
@@ -190,9 +191,10 @@ vec4 GetReflection(vec3 normalM, vec3 viewPos, vec3 nViewPos, vec3 playerPos, fl
                 float combinedDark = clamp(darkMask + thickCurve * 0.5, 0.0, 1.0);
                 skyReflection = mix(skyReflection, stormDeepBlue, combinedDark);
 
-                // Above 0.55 we go near-black
+                // Above 0.55 we go deep storm, but keep a light floor at peak storms
                 float blackout = clamp(blackMask + thickCurve * 0.35, 0.0, 1.0);
-                skyReflection = mix(skyReflection, vec3(0.0), blackout);
+                vec3 reflectionFloor = mix(vec3(0.0), vec3(0.16, 0.20, 0.28), sunLeak);
+                skyReflection = mix(skyReflection, reflectionFloor, blackout);
             }
             #endif
 

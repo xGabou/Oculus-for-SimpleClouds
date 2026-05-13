@@ -510,9 +510,10 @@ void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 vi
             {
                 float scCoverage = max(Get_SC_StormDarkness(), Get_SC_ThicknessRaw());
                 float shadowAdv = clamp(scCoverage, 0.0, 1.0);
+                float scSunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
+                float scSunFloor = mix(0.10, 0.28, scSunLeak);
 
-                // Hard stop direct sun when coverage is near 1
-                lightFogTweaks *= 1.0 - shadowAdv * 0.9;
+                lightFogTweaks *= max(1.0 - shadowAdv * 0.9, scSunFloor);
             }
             #endif
             ambientMult *= lightFogTweaks;
@@ -576,7 +577,9 @@ void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 vi
         // Ignore extremely small values caused by floating noise or empty layers
         if (cloudShadow < 0.05) cloudShadow = 0.0;
 
-        float scDirShadow = clamp(1.0 - cloudShadow, 0.1, 1.0);
+        float scSunLeak = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
+        float scMinDirLight = mix(0.10, 0.24, scSunLeak);
+        float scDirShadow = clamp(1.0 - cloudShadow, scMinDirLight, 1.0);
 
         //float scDirShadow = clamp(1.0 - 0, 0.1, 1.0);
         // Entities and held items were becoming pitch black because they only
@@ -593,7 +596,7 @@ void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 vi
     #if USE_SC  // optional, remove if not needed
         float scDark  = mix(1.0, 0.80, Get_SC_StormDarkness());
         float scThick = mix(1.0, 0.90, Get_SC_ThicknessRaw());
-        float scLightFactor = max(scDark * scThick, 0.65);
+        float scLightFactor = max(scDark * scThick, mix(0.65, 0.74, max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor))));
 
         #if defined GBUFFERS_ENTITIES || defined GBUFFERS_HAND || defined GBUFFERS_TEXTURED
             scLightFactor = 1.0;
@@ -700,7 +703,7 @@ void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 vi
     {
         float scDark  = mix(1.0, 0.85, Get_SC_StormDarkness());
         float scThick = mix(1.0, 0.95, Get_SC_ThicknessRaw());
-        float scFactor = max(scDark * scThick, 0.80);
+        float scFactor = max(scDark * scThick, mix(0.80, 0.86, max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor))));
 
         #if defined GBUFFERS_ENTITIES || defined GBUFFERS_HAND || defined GBUFFERS_TEXTURED
             scFactor = 1.0;

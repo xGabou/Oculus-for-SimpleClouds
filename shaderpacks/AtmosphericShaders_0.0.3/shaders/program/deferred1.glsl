@@ -38,10 +38,11 @@ vec2 view = vec2(viewWidth, viewHeight);
         float scStorm     = clamp(Get_SC_SmoothStorminessValue(), 0.0, 1.0);
         float scThick     = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
         float scCoverage  = clamp(max(scStorm, scThick), 0.0, 1.0);
+        float scSunLeak   = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
         float scSkyFade   = smoothstep(0.05, 0.55, scCoverage);
         float scSceneFade = smoothstep(0.08, 0.70, scCoverage);
-        float scSkyDim    = mix(1.0, 0.03, scSkyFade);
-        float scSceneDim  = mix(1.0, 0.12, scSceneFade);
+        float scSkyDim    = mix(1.0, mix(0.03, 0.14, scSunLeak), scSkyFade);
+        float scSceneDim  = mix(1.0, mix(0.12, 0.22, scSunLeak), scSceneFade);
     #else
         float scSkyDim   = 1.0;
         float scSceneDim = 1.0;
@@ -228,9 +229,10 @@ void main() {
         float scRaw = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
         float scMask = step(0.08, scRaw);              // 1 = storm, 0 = normal
         float scDisable = scMask * scRaw;              // progressive darkening
-        sunFactor     *= (1.0 - scDisable);
-        sunVisibility *= (1.0 - scDisable);
-        sunVisibility2*= (1.0 - scDisable);
+        float scSunTransmission = max(1.0 - scDisable, max(Get_SC_SunTransmissionFloor(), 0.18 * smoothstep(0.70, 1.0, rainFactor)));
+        sunFactor     *= scSunTransmission;
+        sunVisibility *= scSunTransmission;
+        sunVisibility2*= scSunTransmission;
     #endif
     float skyFade = 0.0;
     vec3 waterRefColor = vec3(0.0);
@@ -433,6 +435,7 @@ void main() {
         #if USE_SC
             float scStorm    = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
             float scThick    = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
+            float scSunLeak  = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
             // Shadow on ground
             float scCloudShadow = smoothstep(0.25, 0.85, max(scStorm, scThick));
@@ -451,11 +454,12 @@ void main() {
             float lightningGlow = lightningFlash * exp(-lightningDistance * 0.01);
 
             // Apply darkening → SC-like storm and volume fog
-            color *= mix(vec3(1.0), vec3(0.3, 0.33, 0.38), scTotalDark);
+            vec3 scStormLightFloor = mix(vec3(0.3, 0.33, 0.38), vec3(0.42, 0.45, 0.50), scSunLeak);
+            color *= mix(vec3(1.0), scStormLightFloor, scTotalDark);
             color += lightningFlash * vec3(0.6, 0.7, 0.9);
             color += lightningGlow * vec3(0.2, 0.24, 0.28);
 
-            waterRefColor *= mix(1.0, 0.25, scTotalDark);
+            waterRefColor *= mix(1.0, mix(0.25, 0.38, scSunLeak), scTotalDark);
             waterRefColor += lightningFlash * vec3(0.45, 0.55, 0.7);
             waterRefColor += lightningGlow * vec3(0.25, 0.35, 0.45);
 

@@ -1,6 +1,10 @@
 #ifndef INCLUDE_LIGHT_AND_AMBIENT_MULTIPLIERS
 #define INCLUDE_LIGHT_AND_AMBIENT_MULTIPLIERS
 
+#if USE_SC
+    #include "/lib/util/sc_bridge.glsl"
+#endif
+
 vec3 GetLightColorMult() {
     vec3 baseMult;
 
@@ -23,12 +27,13 @@ vec3 GetLightColorMult() {
             #else
                 float storm     = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
                 float thick     = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
+                float sunLeak   = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
                 float stormNorm = clamp(storm / 0.6, 0.0, 1.0);
                 float stormC    = pow(stormNorm, 1.45);
 
-                float multDim   = mix(1.0, 0.32, stormC);
-                float thickDim  = mix(1.0, 0.70, thick);
+                float multDim   = mix(1.0, mix(0.32, 0.46, sunLeak), stormC);
+                float thickDim  = mix(1.0, mix(0.70, 0.78, sunLeak), thick);
 
                 baseMult = baseMult * multDim * thickDim;
             #endif
@@ -65,12 +70,13 @@ vec3 GetAtmColorMult() {
             #else
                 float storm     = clamp(Get_SC_StormDarkness(), 0.0, 1.0);
                 float thick     = clamp(Get_SC_ThicknessRaw(), 0.0, 1.0);
+                float sunLeak   = max(Get_SC_HighStormLightLeak(), smoothstep(0.70, 1.0, rainFactor));
 
                 float stormNorm = clamp(storm / 0.6, 0.0, 1.0);
                 float stormC    = pow(stormNorm, 1.25);
 
-                float multDim   = mix(1.0, 0.45, stormC);
-                float thickDim  = mix(1.0, 0.80, thick);
+                float multDim   = mix(1.0, mix(0.45, 0.56, sunLeak), stormC);
+                float thickDim  = mix(1.0, mix(0.80, 0.86, sunLeak), thick);
 
                 baseMult = baseMult * multDim * thickDim;
             #endif
