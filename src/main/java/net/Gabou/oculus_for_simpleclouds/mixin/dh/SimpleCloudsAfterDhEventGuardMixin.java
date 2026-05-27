@@ -11,8 +11,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = SimpleCloudsAfterDhRenderHandler.class, remap = false)
 public class SimpleCloudsAfterDhEventGuardMixin {
+    private static long oculus_for_simpleclouds$lastLogMs;
+
     @Inject(method = "afterRender", at = @At("HEAD"), cancellable = true)
     private void oculus_for_simpleclouds$skipUntilReady(DhApiEventParam<Void> event, CallbackInfo ci) {
+        long now = System.currentTimeMillis();
+        if (now - oculus_for_simpleclouds$lastLogMs > 1000L) {
+            oculus_for_simpleclouds$lastLogMs = now;
+            System.out.println("[OFSC DEBUG] DH afterRender callback: ready=" + DhReadyTracker.dhReady
+                    + " passComplete=" + SimpleCloudsDhCompatHandler._isPassComplete());
+        }
         if (!DhReadyTracker.dhReady) {
             SimpleCloudsDhCompatHandler._markPassComplete(true);
             ci.cancel();

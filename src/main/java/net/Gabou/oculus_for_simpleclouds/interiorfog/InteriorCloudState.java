@@ -19,11 +19,11 @@ public class InteriorCloudState {
     }
 
     public static boolean shouldSuppressOpaqueMesh(float partialTick) {
-        return InteriorCloudConfig.ENABLED.get() && InteriorCloudConfig.SUPPRESS_MESH.get() && currentStrength(partialTick) >= InteriorCloudConfig.MESH_SUPPRESSION_THRESHOLD.get();
+        return false;
     }
 
     public static boolean shouldSuppressTransparentMesh(float partialTick) {
-        return InteriorCloudConfig.ENABLED.get() && InteriorCloudConfig.SUPPRESS_TRANSPARENT_MESH.get() && currentStrength(partialTick) >= InteriorCloudConfig.MESH_SUPPRESSION_THRESHOLD.get();
+        return false;
     }
 
     public static float currentStrength(float partialTick) {

@@ -48,7 +48,12 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     private static long lastDebugMs = 0L;
     private static String lastDebugMsg = "";
     private static boolean warnedZeroVerts = false;
+    private static long lastDhRenderCallbackMs = 0L;
+    private static boolean warnedUsingAfterLevelFallback = false;
+    private static boolean warnedStormFogSkipped = false;
     public static final boolean DEBUG_BLIT_CLOUD_TARGET = Boolean.getBoolean("ofsc.debug.blitClouds");
+    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.getBoolean("ofsc.enableStormFogWithShaders");
+    public static final boolean ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS = Boolean.getBoolean("ofsc.enableTransparentCloudsWithShaders");
     private static int combinedDepthTex = -1;
     private static int combinedDepthFbo = -1;
     private static int combinedDepthW = -1;
@@ -84,6 +89,20 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     public void afterLevel(Minecraft mc, SimpleCloudsRenderer renderer, PoseStack stack, Matrix4f projMat,
                            float partialTick, double camX, double camY, double camZ, Frustum frustum) {
         vanilla.afterLevel(mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum);
+        if (!CompatHelper.areShadersRunning()) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - lastDhRenderCallbackMs <= 1000L) {
+            return;
+        }
+
+        if (!warnedUsingAfterLevelFallback) {
+            warnedUsingAfterLevelFallback = true;
+            System.out.println("[OFSC WARN] DH render callbacks are not firing; using afterLevel fallback cloud render.");
+        }
+        ShaderAwareNoDhPipeline.INSTANCE.afterLevel(mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum);
     }
 
 
@@ -115,6 +134,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
 
     @Override
     public void beforeDistantHorizonsApplyShader(Minecraft mc, SimpleCloudsRenderer renderer, PoseStack stack, Matrix4f projMat, float partialTick, double camX, double camY, double camZ, Frustum frustum, int dhFbo) {
+        lastDhRenderCallbackMs = System.currentTimeMillis();
+        warnedUsingAfterLevelFallback = false;
         if (!CompatHelper.areShadersRunning()) {
             vanilla.beforeDistantHorizonsApplyShader(
                     mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum, dhFbo
@@ -131,7 +152,10 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         transparencyTarget.clear(Minecraft.ON_OSX);
         RenderTarget mainTarget = mc.getMainRenderTarget();
         // Capture vanilla depth now (pre-shader) for final composite occlusion.
-        DepthSource vanillaDepthSource = FinalCloudCompositeHandler.captureVanillaDepthSource(mainTarget);
+        DepthSource vanillaDepthSource = FinalCloudCompositeHandler.getCapturedSceneDepthSource();
+        if (!vanillaDepthSource.isValid()) {
+            vanillaDepthSource = FinalCloudCompositeHandler.captureVanillaDepthSource(mainTarget);
+        }
         boolean copiedVanillaDepth = FinalCloudCompositeHandler.copyDepthToTarget(cloudTarget, vanillaDepthSource);
         int vanillaDepthTex = vanillaDepthSource.isValid() ? vanillaDepthSource.getDepthTexture() : -1;
         int vanillaW = vanillaDepthSource.isValid() ? vanillaDepthSource.getWidth() : FinalCloudCompositeHandler.getCapturedW();
@@ -176,6 +200,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
 
     @Override
     public void afterDistantHorizonsRender(Minecraft mc, SimpleCloudsRenderer renderer, PoseStack stack, Matrix4f projMat, float partialTick, double camX, double camY, double camZ, Frustum frustum, int dhFbo) {
+        lastDhRenderCallbackMs = System.currentTimeMillis();
+        warnedUsingAfterLevelFallback = false;
         if (!CompatHelper.areShadersRunning()) {
             vanilla.afterDistantHorizonsRender(
                     mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum, dhFbo
@@ -223,7 +249,7 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         SimpleCloudsRenderer.renderCloudsOpaque(generator, stack, projMat, renderer.getFogStart(), renderer.getFogEnd(), partialTick, cloudR, cloudG, cloudB, ((Boolean) SimpleCloudsConfig.CLIENT.frustumCulling.get()).booleanValue() ? frustum : null);
         p.popPush("clouds_transparent");
         WeightedBlendingTarget transparencyTarget = renderer.getCloudTransparencyTarget();
-        if (generator.transparencyEnabled()) {
+        if (ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS && generator.transparencyEnabled() && transparentVerts > 0) {
             renderer.copyDepthFromCloudsToTransparency();
             transparencyTarget.bindWrite(false);
             boolean depthMaskBeforeTransparent = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
@@ -241,12 +267,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         p.push("cloud_shadows");
         renderer.doCloudShadowProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudTarget.getDepthTextureId());
         p.pop();
-        p.push("clouds_composite");
-        renderer.doFinalCompositePass(stack, partialTick, projMat);
-        p.pop();
         p.pop();
         Matrix4f oldMcProjMat = RenderSystem.getProjectionMatrix();
-        if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue()) {
+        if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && ENABLE_STORM_FOG_WITH_SHADERS) {
             p.push("storm_fog");
             renderer.doStormPostProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudR, cloudG, cloudB);
             RenderTarget target = renderer.getBlurTarget();
@@ -261,30 +284,48 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             RenderSystem.disableBlend();
             RenderSystem.defaultBlendFunc();
             p.pop();
+        } else if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && !warnedStormFogSkipped) {
+            System.out.println("[OFSC DEBUG] Skipping SimpleClouds storm fog while shaders are active. Set -Dofsc.enableStormFogWithShaders=true to re-enable.");
+            warnedStormFogSkipped = true;
         }
 
         mc.getMainRenderTarget().bindWrite(false);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
-        RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
+        int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+        try {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
+            RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
 
-        stack.pushPose();
-        stack.translate(-camX, -camY, -camZ);
-        ShaderAwareDhPipeline.renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
-        stack.popPose();
+            stack.pushPose();
+            stack.translate(-camX, -camY, -camZ);
+            ShaderAwareDhPipeline.renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
+            stack.popPose();
 
-        if (DEBUG_BLIT_CLOUD_TARGET) {
-            debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+            if (DEBUG_BLIT_CLOUD_TARGET) {
+                debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+                mc.getMainRenderTarget().bindWrite(false);
+                cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
+                // Also blit to default framebuffer to bypass any custom main target
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
+                GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+            }
+        } finally {
+            RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
             mc.getMainRenderTarget().bindWrite(false);
-            cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
-            // Also blit to default framebuffer to bypass any custom main target
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
-            GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+            restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
         }
+    }
 
-        RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, mc.getMainRenderTarget().getDepthTextureId(), 0);
+    private static void restoreDepthAttachment(int attachmentType, int attachmentName) {
+        if (attachmentType == GL11.GL_TEXTURE && attachmentName > 0) {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, attachmentName, 0);
+        } else if (attachmentType == GL30.GL_RENDERBUFFER && attachmentName > 0) {
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, attachmentName);
+        } else {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, 0, 0);
+        }
     }
 
 
@@ -580,6 +621,12 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     }
 
     private static void debug(String msg) {
+        long now = System.currentTimeMillis();
+        if (!msg.equals(lastDebugMsg) || now - lastDebugMs > DEBUG_INTERVAL_MS) {
+            System.out.println("[OFSC DEBUG] " + msg);
+            lastDebugMsg = msg;
+            lastDebugMs = now;
+        }
     }
 
 
