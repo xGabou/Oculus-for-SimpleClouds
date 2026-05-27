@@ -16,6 +16,7 @@ import dev.nonamecrackers2.simpleclouds.client.framebuffer.WeightedBlendingTarge
 import dev.nonamecrackers2.simpleclouds.client.mesh.generator.CloudMeshGenerator;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
+import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
 import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
@@ -47,12 +48,14 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     private static final long DEBUG_INTERVAL_MS = 1000L;
     private static long lastDebugMs = 0L;
     private static String lastDebugMsg = "";
+    private static final boolean DEBUG_LOGGING = Boolean.getBoolean("ofsc.debug.dhPipeline");
     private static boolean warnedZeroVerts = false;
     private static long lastDhRenderCallbackMs = 0L;
+    private static long lastLightningRenderMs = 0L;
     private static boolean warnedUsingAfterLevelFallback = false;
     private static boolean warnedStormFogSkipped = false;
     public static final boolean DEBUG_BLIT_CLOUD_TARGET = Boolean.getBoolean("ofsc.debug.blitClouds");
-    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.getBoolean("ofsc.enableStormFogWithShaders");
+    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.parseBoolean(System.getProperty("ofsc.enableStormFogWithShaders", "true"));
     public static final boolean ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS = Boolean.getBoolean("ofsc.enableTransparentCloudsWithShaders");
     private static int combinedDepthTex = -1;
     private static int combinedDepthFbo = -1;
@@ -82,6 +85,7 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     @Override
     public void beforeWeather(Minecraft mc, SimpleCloudsRenderer renderer, PoseStack stack, Matrix4f projMat,
                               float partialTick, double camX, double camY, double camZ, Frustum frustum) {
+        renderer.getWorldEffectsManager().renderPost(stack, partialTick, camX, camY, camZ, (float) SimpleCloudsConstants.CLOUD_SCALE);
         vanilla.beforeWeather(mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum);
     }
 
@@ -285,7 +289,6 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             RenderSystem.defaultBlendFunc();
             p.pop();
         } else if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && !warnedStormFogSkipped) {
-            System.out.println("[OFSC DEBUG] Skipping SimpleClouds storm fog while shaders are active. Set -Dofsc.enableStormFogWithShaders=true to re-enable.");
             warnedStormFogSkipped = true;
         }
 
@@ -335,6 +338,7 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         RenderSystem.enableBlend();
         RenderSystem.enableDepthTest();
         if (effects.hasLightningToRender()) {
+            markLightningRendered();
             float cachedFogStart = RenderSystem.getShaderFogStart();
             RenderSystem.setShaderFogStart(Float.MAX_VALUE);
             builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
@@ -352,6 +356,14 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             RenderSystem.defaultBlendFunc();
         }
         RenderSystem.disableBlend();
+    }
+
+    public static boolean shouldRenderWeatherLightningFallback() {
+        return System.currentTimeMillis() - lastLightningRenderMs > 100L;
+    }
+
+    public static void markLightningRendered() {
+        lastLightningRenderMs = System.currentTimeMillis();
     }
 
     @Override
@@ -621,6 +633,9 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
     }
 
     private static void debug(String msg) {
+        if (!DEBUG_LOGGING) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (!msg.equals(lastDebugMsg) || now - lastDebugMs > DEBUG_INTERVAL_MS) {
             System.out.println("[OFSC DEBUG] " + msg);

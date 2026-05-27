@@ -946,6 +946,42 @@ Observed/result:
 - Build succeeded on 2026-05-27.
 - Copied to the CurseForge test instance for validation.
 
+## Release Cleanup: Remove Diagnostic Log Spam
+
+New evidence:
+
+- The weather and DH compatibility fixes are now behaving as intended.
+- The remaining active logs were diagnostic traces added while chasing the sync/weather flip and DH depth issues.
+- Most of those traces are no longer needed for validation and would spam release logs.
+
+Patch:
+
+- Removed the temporary weather-trace mixins:
+  - `ClientCloudManagerWeatherTraceMixin`
+  - `SimpleCloudsClientConfigListenersTraceMixin`
+  - `CloudManagerWeatherDecisionTraceMixin`
+  - `SimpleCloudsClientPacketHandlerMixin`
+- Removed the unconditional resource-reload debug print from `FinalCloudCompositeHandler`.
+- Removed the `SimpleCloudsUniforms.debugPrint(...)` helper that only existed for debug output.
+- Silenced the DH bridge / DH callback trace prints and gated the remaining pipeline debug output behind explicit system properties.
+- Kept warnings and error logs that indicate actual failures, because those are still useful in release.
+
+Why:
+
+- The earlier trace logs were only needed to identify the sync overwrite path and the DH interaction path.
+- Leaving them enabled would create noisy release logs and make actual warnings harder to see.
+
+Expected behavior:
+
+- Release builds should no longer emit the temporary `[OFSC DEBUG]` / `[OFSC TRACE]` packets, weather-flip traces, or DH callback spam by default.
+- Only real warnings/errors and explicitly enabled debug flags should produce extra output.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Backed up the previous test jar to `C:\Users\matga\curseforge\minecraft\Instances\Test Shaders\mods\oculus_for_simpleclouds-1.1.0.jar.bak-20260527-050408`.
+- Copied the cleaned jar to `C:\Users\matga\curseforge\minecraft\Instances\Test Shaders\mods\oculus_for_simpleclouds-1.1.0.jar`.
+
 ## Fix Attempt: Prefer Main RenderTarget Depth Snapshot Before Iris RenderTargets
 
 New evidence:
@@ -1192,3 +1228,197 @@ Observed in-game result:
 - User reported: "omg it works" after the scene-depth mask final composite fix.
 - Current working fix: keep debug mode disabled by default and use scene-depth-present/non-sky masking for final cloud occlusion instead of raw cloud-vs-scene depth comparison.
 - Current known tradeoff: conservative mask can hide clouds anywhere scene depth exists, but it resolves clouds rendering through blocks/trees with the tested shader/DH setup.
+
+## Fix Attempt: F3+T Reload Reset And Transparent Cloud State Leak Guard
+
+New evidence:
+
+- User reported two remaining issues after the scene-depth mask fix:
+  - Water/terrain depth state can still break at random times, usually while under a cumulus cloud region.
+  - Pressing F3+T breaks clouds; clouds stay hidden until the world is restarted.
+- This is not a repeat of the scene-depth comparison work. Clouds are now visible and occluded correctly, so the remaining failures point to GL/resource lifetime and state leakage.
+
+Patch:
+
+- Added a Forge client resource reload listener registered on the mod event bus.
+- On client resource reload, OFSC now deletes and resets its cached composite/depth-copy/mix shader programs, VAOs, VBOs, owned depth textures, FBOs, stage snapshots, and cached depth selection state.
+- The reload reset is scheduled through `Minecraft.execute(...)` so GL deletion happens on the client render thread.
+- Disabled the SimpleClouds transparent cloud pass by default while shaders are active unless `-Dofsc.enableTransparentCloudsWithShaders=true` is set.
+- Preserved and restored the main framebuffer's actual previous depth attachment type/name around the temporary cloud-depth attachment used for lightning, instead of assuming the attachment is always `mc.getMainRenderTarget().getDepthTextureId()`.
+- Applied the transparent-pass guard and depth-attachment restore in both DH and non-DH shader-aware pipelines.
+
+Why:
+
+- F3+T reloads client resources and can invalidate/recreate shader-related state. OFSC was keeping long-lived GL objects and cached depth texture IDs across reload, which can leave the final composite sampling stale or deleted targets.
+- The water/terrain translucency issue correlating with cumulus regions is consistent with the SimpleClouds transparent pass mutating depth/blend/FBO state or attachments during cloud rendering.
+- Restoring the exact previous depth attachment avoids leaking the cloud depth texture into the main framebuffer when Oculus/Iris owns or swaps the main depth attachment.
+
+Expected behavior:
+
+- After F3+T, OFSC should rebuild its composite resources on the next render instead of keeping stale state, so clouds should come back without restarting the world.
+- Random water/terrain depth corruption under cumulus clouds should stop or become less likely because the shader-aware path no longer runs the transparent cloud pass by default and restores the main depth attachment more strictly.
+- Visual tradeoff: transparent cloud details may be reduced while shaders are active. Re-enable with `-Dofsc.enableTransparentCloudsWithShaders=true` only if needed for comparison.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.
+
+## Fix Attempt: Restore SimpleClouds Weather/Lightning/Darkening Parity
+
+New evidence:
+
+- User reported clouds render, but SimpleClouds rain is no longer visible, SimpleClouds lightning is not visible, and shader darkening does not match the non-DH path when DH is loaded.
+- Comparing the shader-aware no-DH and DH paths showed that both custom paths skip or delay some SimpleClouds world-effect state updates that vanilla SimpleClouds normally relies on for rain level, storminess, cloud color darkening, shader uniforms, and lightning visibility.
+- This is not a repeat of the depth-mask fix. The current issue is weather/effects state timing and DH-specific lightning routing.
+
+Patch:
+
+- Both shader-aware DH and no-DH pipelines now call `WorldEffects.renderPost(...)` in `beforeWeather(...)`, before delegating to the wrapped pipeline. This updates SimpleClouds rain/storm state earlier in the frame instead of waiting until after level rendering.
+- Added a renderer tick injection that refreshes SimpleClouds world-effect state before `WorldEffects.tick()` runs. This keeps rain quad generation and smoothed storminess alive even if DH changes render timing.
+- Changed storm fog default back to enabled for shaders via `ofsc.enableStormFogWithShaders`, defaulting to `true` instead of `false`.
+- Added a DH-loaded weather-pass lightning fallback. Since SimpleClouds skips normal weather lightning when DH is loaded, OFSC now renders lightning there only if the DH pipeline has not rendered lightning recently.
+- Updated SimpleClouds/Iris weather darkening to compute storminess directly from the current CloudManager camera position and take the max of computed storminess and SimpleClouds' smoothed WorldEffects value.
+- Fixed the custom `sc_State` storminess calculation to use the same edge-fade convention as SimpleClouds' own `WorldEffects.renderPost(...)` logic.
+
+Why:
+
+- SimpleClouds rain generation depends on `level.getRainLevel()` during `WorldEffects.tick()`. If DH/shader timing delays or skips the usual world-effect update, rain quads never get generated.
+- SimpleClouds intentionally does not render weather lightning in `renderWeather()` when DH is loaded because vanilla DH support renders lightning later in the DH pass. If our DH render callback path is delayed or skipped, lightning disappears.
+- Iris shader darkening uniforms were depending too much on `WorldEffects` cached values, which can be stale/zero in the DH path. Direct CloudManager sampling makes DH and no-DH report the same storm/darken state.
+
+Expected behavior:
+
+- SimpleClouds rain should show again under rainy/stormy cloud regions.
+- SimpleClouds lightning should be visible with DH loaded even if the DH callback render path misses a frame.
+- Shader darkening should match the no-DH behavior more closely because both now use the same current cloud-region storminess calculation.
+- Since storm fog is enabled again by default, watch for any return of the water/depth corruption. If that comes back, the next fix should isolate storm fog state restore instead of disabling all weather effects.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.
+
+## Fix Attempt: Ignore Vanilla-Weather Flag For Local SimpleClouds Weather Effects
+
+New evidence:
+
+- User saw rain/thunder/darkness work briefly, then disappear after about 4-5 seconds.
+- Client debug then showed storminess `0.0` instead of about `0.7` and displayed `Vanilla Weather enabled`.
+- Source inspection showed `ClientCloudManager.determineUseVanillaWeather()` can flip to vanilla-weather mode after client/server sync/config state updates. When that flag is true, SimpleClouds `WorldEffects.renderPost(...)` forces `storminessAtCamera` to zero and stops setting SimpleClouds rain level, even when the cloud region under the camera is stormy.
+- This is not the same as the previous weather timing patch. The new issue is a later vanilla-weather flag overwrite that zeros the effect state after it was initially correct.
+
+Patch:
+
+- Added `SimpleCloudsWorldEffectsWeatherMixin` on `WorldEffects.renderPost(...)` tail.
+- The mixin recomputes local cloud weather directly from `CloudManager.getCloudTypeAtWorldPos(...)` and keeps `typeAtCamera`, `fadeAtCamera`, `storminessAtCamera`, rain level, and thunder level consistent with the actual cloud region, even if `shouldUseVanillaWeather()` flips true.
+- Updated `SimpleCloudsUniforms.computeStorminess(...)` so shader uniform storminess is based on actual cloud type/fade and no longer returns zero just because the vanilla-weather flag is true.
+- Updated `SimpleCloudsIrisWeatherCompat.getRainStrength(...)` to use the max of SimpleClouds regional rain and vanilla rain instead of disabling SimpleClouds rain when vanilla-weather mode is true.
+- Registered the new mixin in `oculus_for_simpleclouds.mixins.json`.
+
+Why:
+
+- The visible symptom was exactly the SimpleClouds vanilla-weather branch overwriting storm state to zero after sync/config state settled.
+- We should not force the whole cloud manager mode from this compatibility layer; instead, we keep client-side visual weather effects derived from actual cloud regions so shaders, rain, thunder, and fog remain stable.
+
+Expected behavior:
+
+- When the UI/debug text says `Vanilla Weather enabled`, local SimpleClouds visual weather should no longer collapse to storminess `0.0` if the player is under a stormy/rainy SimpleClouds region.
+- Rain, thunder, darkness, and shader darkening should stay active after the first 4-5 seconds instead of briefly appearing then disappearing.
+- If the server truly switches to a no-weather cloud type/region, storminess should still drop normally because the computation uses the actual cloud type and fade.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.
+
+## Diagnostic: Trace Vanilla-Weather Switch Call Site
+
+New evidence:
+
+- User confirmed the visible weather effects work, but after roughly 4-5 seconds the client reports `Vanilla Weather enabled`, storminess drops to `0.0`, and the visual state breaks again.
+- That means the next useful step is not another visual fix. We need the exact call site that triggers the `ClientCloudManager` switch into vanilla-weather mode.
+- This is not repeating the prior weather parity patch. It is a diagnostic hook that traces the switch itself.
+
+Patch:
+
+- Added `ClientCloudManagerWeatherTraceMixin` targeting `ClientCloudManager.resetVanillaWeather()`.
+- When SimpleClouds flips into vanilla-weather mode, OFSC now prints the current `shouldUseVanillaWeather()` state, the current cloud mode, the `receivedSync` state, and a full stack trace to `System.out`.
+- Registered the mixin in `oculus_for_simpleclouds.mixins.json`.
+
+Why:
+
+- `resetVanillaWeather()` is called from `CloudManager.tick()` exactly when `useVanillaWeather` changes.
+- Logging there gives the actual call path that caused the mode flip, instead of guessing from the downstream symptom of storminess becoming zero.
+
+Expected behavior:
+
+- The next time the switch happens, the log should show a stack trace that identifies the code path causing `ClientCloudManager` to enter vanilla-weather mode.
+- That will tell us whether the flip is coming from packet sync, a cloud-mode update, or some other lifecycle event.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.
+
+## Diagnostic: Trace Server Cloud-Mode Config Write
+
+New evidence:
+
+- The `ClientCloudManager.resetVanillaWeather()` trace showed two flips:
+  - startup: `vanillaWeather=true cloudMode=AMBIENT receivedSync=false`
+  - after sync: `vanillaWeather=false cloudMode=DEFAULT receivedSync=true`
+- The world-tick stack proved the flip itself happens during `CloudManager.tick()`, but that is only where the state is *observed* and acted on.
+- Source inspection confirmed the client-side cloud mode is written by `SimpleCloudsClientConfigListeners.onCloudModeUpdatedFromServer(...)`, which is invoked from `SimpleCloudsClientPacketHandler.handleNotifyCloudModeUpdatedPacket(...)`.
+- That is the actual source of the `DEFAULT` mode seen after sync.
+
+Patch:
+
+- Added `SimpleCloudsClientConfigListenersTraceMixin` targeting `SimpleCloudsClientConfigListeners.onCloudModeUpdatedFromServer(...)`.
+- The hook logs the incoming server mode, current client/server config mode values, current level, and a stack trace.
+- Registered the mixin in `oculus_for_simpleclouds.mixins.json`.
+
+Why:
+
+- The previous trace only proved the weather state changed during the world tick.
+- Logging the config write itself will show whether the server is explicitly telling the client to use `DEFAULT`, or whether another packet/config write path is causing the same result.
+
+Expected behavior:
+
+- The next sync/update should print the packet-driven cloud mode write and the caller stack.
+- If the server is sending `DEFAULT`, we know the client is obeying a server-side mode update, not randomly changing its own mode.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.
+
+## Fix Attempt: Stop Resetting `receivedSync` On Generic Update Packets
+
+New evidence:
+
+- The `onCloudModeUpdatedFromServer(...)` trace never appeared in the CurseForge instance logs.
+- That ruled out the cloud-mode update packet as the initiator for the later weather collapse.
+- Comparing the code paths showed a stronger candidate: `SimpleCloudsClientPacketHandlerMixin` was resetting `ClientCloudManager.receivedSync` to `false` after handling any `UpdateCloudManagerPacket` that was not a `SendCloudManagerPacket`.
+- `ClientCloudManager.determineUseVanillaWeather()` returns `true` whenever `receivedSync` is false, so that reset would force the client back into vanilla-weather mode after the next generic sync packet.
+
+Patch:
+
+- Removed the `receivedSync = false` reset from `SimpleCloudsClientPacketHandlerMixin`.
+- Replaced it with a log-only trace that prints the packet type, current `receivedSync` state, cloud mode, speed, scroll angle, and cloud height.
+
+Why:
+
+- The mixin was undoing the sync flag immediately after `handleUpdateCloudManagerPacket(...)` had set it, which explains why the weather looked correct briefly and then flipped back after a few seconds.
+- Preserving `receivedSync` keeps `ClientCloudManager.determineUseVanillaWeather()` from falling back to vanilla weather just because a normal movement/update packet arrived.
+
+Expected behavior:
+
+- The client should stop switching back to `Vanilla Weather enabled` after generic cloud manager updates.
+- Storminess should remain stable instead of collapsing to `0.0` a few seconds after joining.
+- The new packet log should show the update traffic without mutating the sync flag.
+
+Observed/result:
+
+- Build succeeded on 2026-05-27.
+- Copied to the CurseForge test instance for validation.

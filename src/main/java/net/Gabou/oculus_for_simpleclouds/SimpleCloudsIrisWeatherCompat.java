@@ -31,26 +31,28 @@ public final class SimpleCloudsIrisWeatherCompat {
                 Minecraft mc = Minecraft.getInstance();
                 Vec3 pos = mc.gameRenderer.getMainCamera().getPosition();
                 CloudManager<?> manager = CloudManager.get(level);
-                if (!manager.shouldUseVanillaWeather()) {
-                    return manager.getRainLevel((float) pos.x, (float) pos.y, (float) pos.z);
-                }
-                return level.getRainLevel(tickDelta);
+                float simpleCloudsRain = manager.getRainLevel((float) pos.x, (float) pos.y, (float) pos.z);
+                return Math.max(simpleCloudsRain, level.getRainLevel(tickDelta));
             }
 
             @Override
             public float getThunderStrength(ClientLevel level, float tickDelta) {
-                return SimpleCloudsRenderer.getOptionalInstance()
+                float computed = SimpleCloudsUniforms.sampleComputedStorminess();
+                float effectValue = SimpleCloudsRenderer.getOptionalInstance()
                         .map(SimpleCloudsRenderer::getWorldEffectsManager)
                         .map(effects -> effects.getStorminessSmoothed(tickDelta))
                         .orElse(level.getThunderLevel(tickDelta));
+                return Math.max(computed, effectValue);
             }
 
             @Override
             public float getSkyDarken(ClientLevel level, float tickDelta) {
-                return SimpleCloudsRenderer.getOptionalInstance()
+                float computed = SimpleCloudsUniforms.sampleComputedStorminess();
+                float effectValue = SimpleCloudsRenderer.getOptionalInstance()
                         .map(SimpleCloudsRenderer::getWorldEffectsManager)
                         .map(effects -> Mth.clamp(effects.getStorminessSmoothed(tickDelta), 0.0F, 1.0F))
                         .orElse(level.getSkyDarken(tickDelta));
+                return Math.max(computed, effectValue);
             }
         });
 

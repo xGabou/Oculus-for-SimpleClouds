@@ -41,17 +41,7 @@ import java.util.Optional;
 
 @OnlyIn(Dist.CLIENT)
 public final class SimpleCloudsUniforms {
-    private static long lastDebugTime = 0L;
-    private static final long DEBUG_INTERVAL_MS = 1000; // print once per second
-
     private SimpleCloudsUniforms() {
-    }
-    public static void debugPrint(String msg) {
-        long now = System.currentTimeMillis();
-        if (now - lastDebugTime >= DEBUG_INTERVAL_MS) {
-            System.out.println("[OCS DEBUG] " + msg);
-            lastDebugTime = now;
-        }
     }
 
     /**
@@ -77,14 +67,14 @@ public final class SimpleCloudsUniforms {
         Vec3 cameraPos = mc.gameRenderer.getMainCamera().getPosition();
         Pair<CloudType, Float> info = manager.get().getCloudTypeAtWorldPos((float) cameraPos.x, (float) cameraPos.z);
         CloudType type = info.getLeft();
-        float edgeFade =  info.getRight();
+        float edgeFade = info.getRight();
 
         OptionalWorldEffects effects = OptionalWorldEffects.grab();
         float fade = 1.0F - effects.fade().orElse(edgeFade);
-        float baseStorminess = effects.instantStorminess()
-                .orElseGet(() -> computeStorminess(manager.get(), type, cameraPos, fade));
+        float computedStorminess = computeStorminess(manager.get(), type, cameraPos, edgeFade);
+        float baseStorminess = Math.max(computedStorminess, effects.instantStorminess().orElse(0.0F));
         float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
-        float smoothed = effects.smoothedStorminess(tickDelta).orElse(baseStorminess);
+        float smoothed = Math.max(baseStorminess, effects.smoothedStorminess(tickDelta).orElse(0.0F));
 
         Vector4f out = new Vector4f(
                 type.weatherType().ordinal(),
@@ -96,6 +86,21 @@ public final class SimpleCloudsUniforms {
 
         return out;
 
+    }
+
+    public static float sampleComputedStorminess() {
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel level = mc.level;
+        if (level == null || mc.gameRenderer == null || mc.gameRenderer.getMainCamera() == null) {
+            return 0.0F;
+        }
+        Optional<CloudManager<ClientLevel>> manager = tryGetManager(level);
+        if (manager.isEmpty()) {
+            return 0.0F;
+        }
+        Vec3 cameraPos = mc.gameRenderer.getMainCamera().getPosition();
+        Pair<CloudType, Float> info = manager.get().getCloudTypeAtWorldPos((float) cameraPos.x, (float) cameraPos.z);
+        return computeStorminess(manager.get(), info.getLeft(), cameraPos, info.getRight());
     }
 
     /**
@@ -168,14 +173,14 @@ public final class SimpleCloudsUniforms {
     }
 
 
-    private static float computeStorminess(CloudManager<ClientLevel> manager, CloudType type, Vec3 cameraPos, float fade) {
-        if (manager.shouldUseVanillaWeather() || !type.weatherType().causesDarkening()) {
+    private static float computeStorminess(CloudManager<ClientLevel> manager, CloudType type, Vec3 cameraPos, float edgeFade) {
+        if (!type.weatherType().causesDarkening()) {
             return 0.0F;
         }
         float cameraY = (float) cameraPos.y;
         float cloudCeiling = type.stormStart() * SimpleCloudsConstants.CLOUD_SCALE + manager.getCloudHeight();
         float verticalFade = 1.0F - Mth.clamp((cameraY - cloudCeiling) / SimpleCloudsConstants.RAIN_VERTICAL_FADE, 0.0F, 1.0F);
-        float horizontalFade = Mth.clamp((1.0F - fade) * 3.0F, 0.0F, 1.0F);
+        float horizontalFade = Mth.clamp((1.0F - edgeFade) * 3.0F, 0.0F, 1.0F);
         return type.storminess() * horizontalFade * verticalFade;
     }
 

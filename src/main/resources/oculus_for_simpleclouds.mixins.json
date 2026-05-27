@@ -24,8 +24,8 @@
     "dh.SimpleCloudsBeforeDhRenderHandlerMixin",
     "dh.SimpleCloudsAfterDhEventGuardMixin",
     "SimpleCloudsNoUnsafeCopyMixin",
+    "SimpleCloudsWorldEffectsWeatherMixin",
     "ClientCloudManagerAccessor",
-    "SimpleCloudsClientPacketHandlerMixin",
     "dh.SimpleCloudsAfterDhRenderHandlerMixin",
     "dh.SC_PipelineTracer",
     "ShaderPackScreenMixin"

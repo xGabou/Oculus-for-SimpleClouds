@@ -1,38 +1,19 @@
-☁️ **Oculus for Simple Clouds — Progress Update**
+☁️ **Oculus for Simple Clouds update**
 
-## 🧠 Summary
-- Clouds now react properly to sunrise and sunset 🌅
-- Lighting is now handled directly in the cloud shaders (no more fake tint)
-- Stable baseline restored after removing broken experiments
-- Works even without shaderpacks
+DH COMPAT IS FINALLY HAPPENING 🔥🔥🔥
 
----
+After fighting this stupid shader path for ages, Distant Horizons is finally working WAY better with Simple Clouds.
 
-## 🔥 What’s Working
-- 🌅 Sunrise / sunset coloring → **YESSS**
-- 🧱 Alex’s Caves → **YEEESSS**
-- ⚙️ Immersive Engineering → **YEEESSS**
+Still not perfect yet, but this was the massive blocker.
 
----
+Clouds are no longer getting destroyed by the DH rendering path, white fog and lightning are behaving way better, and the bad weather sync reset is gone.
 
-## 🎨 Current State
-- Transparent clouds → looking great ✅
-- Distant clouds → already good, untouched ✅
-- Opaque clouds → still a bit too gray (being improved)
+## Working now
 
----
+* Distant Horizons compat 🔥🔥🔥
 
-## ❌ Not Working Yet
-- 🌍 Distant Horizons → **still broken 💀**
+## Still cooking
 
----
+* Overall shadow and lighting
 
-## 🚧 In Progress
-- Improve warm lighting on opaque clouds
-- Keep natural variation (no flat colors)
-- Match the look of transparent clouds
-
----
-
-We’re VERY close now 👀  
-Just need that final touch of sunlight on the main cloud body.
+We are SO close now.

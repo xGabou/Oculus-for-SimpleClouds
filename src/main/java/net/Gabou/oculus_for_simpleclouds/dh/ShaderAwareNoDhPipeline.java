@@ -15,6 +15,7 @@ import dev.nonamecrackers2.simpleclouds.client.framebuffer.WeightedBlendingTarge
 import dev.nonamecrackers2.simpleclouds.client.mesh.generator.CloudMeshGenerator;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
+import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
 import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
@@ -39,10 +40,11 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
     private static final long DEBUG_INTERVAL_MS = 1000L;
     private static long lastDebugMs = 0L;
     private static String lastDebugMsg = "";
+    private static final boolean DEBUG_LOGGING = Boolean.getBoolean("ofsc.debug.dhPipeline");
     private static boolean warnedZeroVerts = false;
     private static boolean warnedStormFogSkipped = false;
     public static final boolean DEBUG_BLIT_CLOUD_TARGET = Boolean.getBoolean("ofsc.debug.blitClouds");
-    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.getBoolean("ofsc.enableStormFogWithShaders");
+    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.parseBoolean(System.getProperty("ofsc.enableStormFogWithShaders", "true"));
     public static final boolean ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS = Boolean.getBoolean("ofsc.enableTransparentCloudsWithShaders");
 
     private final CloudsRenderPipeline vanilla = CloudsRenderPipeline.SHADER_SUPPORT;
@@ -59,6 +61,7 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
     @Override
     public void beforeWeather(Minecraft mc, SimpleCloudsRenderer renderer, PoseStack stack, Matrix4f projMat,
                               float partialTick, double camX, double camY, double camZ, Frustum frustum) {
+        renderer.getWorldEffectsManager().renderPost(stack, partialTick, camX, camY, camZ, (float) SimpleCloudsConstants.CLOUD_SCALE);
         vanilla.beforeWeather(mc, renderer, stack, projMat, partialTick, camX, camY, camZ, frustum);
     }
 
@@ -170,7 +173,6 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
             RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
             p.pop();
         } else if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && !warnedStormFogSkipped) {
-            System.out.println("[OFSC DEBUG] Skipping SimpleClouds storm fog while shaders are active. Set -Dofsc.enableStormFogWithShaders=true to re-enable.");
             warnedStormFogSkipped = true;
         }
 
@@ -261,6 +263,9 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
     }
 
     private static void debug(String msg) {
+        if (!DEBUG_LOGGING) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (!msg.equals(lastDebugMsg) || now - lastDebugMs > DEBUG_INTERVAL_MS) {
             //System.out.println("[OFSC DEBUG] " + msg);

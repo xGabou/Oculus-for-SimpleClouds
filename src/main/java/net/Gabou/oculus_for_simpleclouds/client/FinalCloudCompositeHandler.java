@@ -141,6 +141,129 @@ public final class FinalCloudCompositeHandler {
     private FinalCloudCompositeHandler() {
     }
 
+    public static void resetAfterResourceReload() {
+        deleteProgram();
+        deleteDepthCopyProgram();
+        destroyMixDepthProgram();
+        destroyMixedDepthTarget();
+        deleteTextureAndFramebuffer();
+        resetExternalDepthState();
+    }
+
+    private static void deleteProgram() {
+        if (compositeProgram != -1) {
+            GL20.glDeleteProgram(compositeProgram);
+            compositeProgram = -1;
+        }
+        if (compositeVbo != -1) {
+            GL15.glDeleteBuffers(compositeVbo);
+            compositeVbo = -1;
+        }
+        if (compositeVao != -1) {
+            GL30.glDeleteVertexArrays(compositeVao);
+            compositeVao = -1;
+        }
+        locCloudColor = -1;
+        locCloudDepth = -1;
+        locSceneDepth = -1;
+        locDepthBias = -1;
+        locReverseDepth = -1;
+        locDebugMode = -1;
+        locSceneSource = -1;
+        locDepthCombined = -1;
+        locDepthCaptured = -1;
+        locDepthExternal = -1;
+        locDepthOriginal = -1;
+        locDepthCloud = -1;
+        locDepthIrisNoTranslucents = -1;
+        locDepthIrisNoHand = -1;
+        locAvailCombined = -1;
+        locAvailCaptured = -1;
+        locAvailExternal = -1;
+        locAvailOriginal = -1;
+        locAvailCloud = -1;
+        locAvailIrisNoTranslucents = -1;
+        locAvailIrisNoHand = -1;
+        for (int i = 0; i < STAGE_DEPTH_COUNT; i++) {
+            locDepthStage[i] = -1;
+            locAvailStage[i] = -1;
+        }
+    }
+
+    private static void deleteDepthCopyProgram() {
+        if (depthCopyProgram != -1) {
+            GL20.glDeleteProgram(depthCopyProgram);
+            depthCopyProgram = -1;
+        }
+        if (depthCopyVbo != -1) {
+            GL15.glDeleteBuffers(depthCopyVbo);
+            depthCopyVbo = -1;
+        }
+        if (depthCopyVao != -1) {
+            GL30.glDeleteVertexArrays(depthCopyVao);
+            depthCopyVao = -1;
+        }
+        depthCopySamplerLoc = -1;
+    }
+
+    private static void deleteTextureAndFramebuffer() {
+        if (capturedSceneDepthTex != -1) {
+            GL11.glDeleteTextures(capturedSceneDepthTex);
+            capturedSceneDepthTex = -1;
+        }
+        if (captureFbo != -1) {
+            GL30.glDeleteFramebuffers(captureFbo);
+            captureFbo = -1;
+        }
+        if (resolvedDhDepthTex != -1) {
+            GL11.glDeleteTextures(resolvedDhDepthTex);
+            resolvedDhDepthTex = -1;
+        }
+        if (resolvedDhDepthFbo != -1) {
+            GL30.glDeleteFramebuffers(resolvedDhDepthFbo);
+            resolvedDhDepthFbo = -1;
+        }
+        if (depthDebugSampleFbo != -1) {
+            GL30.glDeleteFramebuffers(depthDebugSampleFbo);
+            depthDebugSampleFbo = -1;
+        }
+        for (int i = 0; i < STAGE_DEPTH_COUNT; i++) {
+            if (stageDepthTex[i] != -1) {
+                GL11.glDeleteTextures(stageDepthTex[i]);
+                stageDepthTex[i] = -1;
+            }
+            if (stageDepthFbo[i] != -1) {
+                GL30.glDeleteFramebuffers(stageDepthFbo[i]);
+                stageDepthFbo[i] = -1;
+            }
+            stageDepthW[i] = -1;
+            stageDepthH[i] = -1;
+            stageDepthValid[i] = false;
+        }
+        capturedW = -1;
+        capturedH = -1;
+        resolvedDhDepthW = -1;
+        resolvedDhDepthH = -1;
+        resolvedDhDepthFormat = -1;
+    }
+
+    private static void resetExternalDepthState() {
+        externalSceneDepthTex = -1;
+        irisNoTranslucentsDepthTex = -1;
+        irisNoHandDepthTex = -1;
+        capturedThisFrame = false;
+        combinedSceneDepthTex = -1;
+        combinedW = -1;
+        combinedH = -1;
+        combinedValidThisFrame = false;
+        reverseDepthDetected = false;
+        lastDepthSelectionSource = "";
+        lastDepthSelectionTex = -1;
+        lastCaptureMode = "";
+        lastCaptureTex = -1;
+        depthStageLogMs.clear();
+    }
+
     public interface DepthSource {
         int getDepthTexture();
 
