@@ -1,11 +1,25 @@
-# Iris/Oculus For Simple Clouds
+☁️ **Oculus for Simple Clouds update**
 
-### Added
-- Inital Release
-### Fixed
-- Registered the cloud composite render hook on the NeoForge event bus during client setup instead of relying on removed `EventBusSubscriber` annotations.
-- Updated shader-aware pipelines to the 1.21.1 SimpleClouds API (Matrix4f render callbacks, new `BufferBuilder`/`MeshData` flow, lightning rendering, depth merge hand-off).
-- Aligned Simple Clouds compat checks with the new `CompatHelper.isIrisLoaded()` helper.
+**DH COMPAT IS HERE FOR 1.21.1** 🔥🔥🔥
 
-### Changed / Removed
-- Pose stack handling now rebuilds from the incoming view matrix before custom draws to match the new render pipeline contract.
+Distant Horizons compatibility is finally working on the NeoForge branch.
+
+I updated the NeoForge branch to match the Forge branch, which means a lot of the latest rendering improvements are now available there too.
+
+## What changed
+
+* Distant Horizons compatibility is now working
+* Better lighting
+* Better shadows
+* Improved cloud coloring
+* Better rendering stability
+* White fog and lightning should behave much better
+* Bad weather sync resets should be fixed
+
+## Important note
+
+I do not want my mods to be used without a legitimate copy of Minecraft.
+
+Because of that, the mod now includes a small check that can detect suspicious launcher setups. If you are using a legitimate launcher and a real copy of Minecraft, this should not affect you.
+
+Thanks for the patience while I worked through this. This was one of the biggest blockers for proper DH support.

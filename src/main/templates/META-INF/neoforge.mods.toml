@@ -33,3 +33,17 @@ mandatory = true
 versionRange = "*"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "iris"
+mandatory = true
+versionRange = "*"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "distanthorizons"
+mandatory = false
+versionRange = "*"
+ordering = "AFTER"
+side = "BOTH"
