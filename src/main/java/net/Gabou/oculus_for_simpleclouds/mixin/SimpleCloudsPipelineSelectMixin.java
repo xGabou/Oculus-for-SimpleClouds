@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.nonamecrackers2.simpleclouds.SimpleCloudsMod;
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
+import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareDhPipeline;
 import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareNoDhPipeline;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.joml.Matrix4f;
@@ -22,9 +23,8 @@ public abstract class SimpleCloudsPipelineSelectMixin {
         if (!CompatHelper.areShadersRunning()) {
             return;
         }
-        if (SimpleCloudsMod.dhLoaded()) {
-            return;
-        }
-        this.renderPipelineThisPass = ShaderAwareNoDhPipeline.INSTANCE;
+        this.renderPipelineThisPass = SimpleCloudsMod.dhLoaded()
+                ? ShaderAwareDhPipeline.INSTANCE
+                : ShaderAwareNoDhPipeline.INSTANCE;
     }
 }

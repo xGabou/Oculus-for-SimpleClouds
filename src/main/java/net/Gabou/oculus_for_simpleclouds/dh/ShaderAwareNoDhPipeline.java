@@ -10,20 +10,19 @@ import dev.nonamecrackers2.simpleclouds.client.mesh.generator.CloudMeshGenerator
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
 import dev.nonamecrackers2.simpleclouds.client.renderer.WorldEffects;
 import dev.nonamecrackers2.simpleclouds.client.renderer.pipeline.CloudsRenderPipeline;
+import dev.nonamecrackers2.simpleclouds.common.cloud.SimpleCloudsConstants;
 import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
+import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler.DepthSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.util.profiling.ProfilerFiller;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
-
-import java.nio.IntBuffer;
 
 /**
  * Shader-aware pipeline used when shaders are enabled but Distant Horizons is absent.
@@ -35,8 +34,12 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
     private static final long DEBUG_INTERVAL_MS = 1000L;
     private static long lastDebugMs = 0L;
     private static String lastDebugMsg = "";
+    private static final boolean DEBUG_LOGGING = Boolean.getBoolean("ofsc.debug.dhPipeline");
     private static boolean warnedZeroVerts = false;
+    private static boolean warnedStormFogSkipped = false;
     public static final boolean DEBUG_BLIT_CLOUD_TARGET = Boolean.getBoolean("ofsc.debug.blitClouds");
+    public static final boolean ENABLE_STORM_FOG_WITH_SHADERS = Boolean.parseBoolean(System.getProperty("ofsc.enableStormFogWithShaders", "true"));
+    public static final boolean ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS = Boolean.getBoolean("ofsc.enableTransparentCloudsWithShaders");
 
     private final CloudsRenderPipeline vanilla = CloudsRenderPipeline.SHADER_SUPPORT;
 
@@ -52,6 +55,7 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
     @Override
     public void beforeWeather(Minecraft mc, SimpleCloudsRenderer renderer, Matrix4f viewMat, Matrix4f projMat,
                               float partialTick, double camX, double camY, double camZ, Frustum frustum) {
+        renderer.getWorldEffectsManager().renderPost(viewMat, partialTick, camX, camY, camZ, (float) SimpleCloudsConstants.CLOUD_SCALE);
         vanilla.beforeWeather(mc, renderer, viewMat, projMat, partialTick, camX, camY, camZ, frustum);
     }
 
@@ -73,8 +77,14 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         transparencyTarget.clear(Minecraft.ON_OSX);
 
         RenderTarget mainTarget = mc.getMainRenderTarget();
-        FinalCloudCompositeHandler.captureDepth(mainTarget);
-        boolean copiedVanillaDepth = copyVanillaDepthToCloudTarget(cloudTarget, mainTarget);
+        DepthSource vanillaDepthSource = FinalCloudCompositeHandler.getCapturedSceneDepthSource();
+        if (!vanillaDepthSource.isValid()) {
+            vanillaDepthSource = FinalCloudCompositeHandler.captureVanillaDepthSource(mainTarget);
+        }
+        boolean copiedVanillaDepth = FinalCloudCompositeHandler.copyDepthToTarget(cloudTarget, vanillaDepthSource);
+        FinalCloudCompositeHandler.logDepthSnapshot("shader_no_dh_after_copy",
+                mainTarget == null ? -1 : mainTarget.getDepthTextureId(),
+                cloudTarget.getDepthTextureId());
         debug(String.format(
                 "Shader-only pass: copiedVanilla=%s cloudDepth=%d cloudSize=%dx%d mainDepth=%d",
                 copiedVanillaDepth, cloudTarget.getDepthTextureId(), cloudTarget.width, cloudTarget.height,
@@ -95,18 +105,17 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
             warnedZeroVerts = false;
         }
 
-        PoseStack stack = createPoseStack(viewMat);
         float[] cloudCol = renderer.getCloudColor(partialTick);
         float cloudR = cloudCol[0];
         float cloudG = cloudCol[1];
         float cloudB = cloudCol[2];
+        PoseStack stack = createPoseStack(viewMat);
         ProfilerFiller p = mc.getProfiler();
         p.push("clouds");
         boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
         int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
         GL11.glDepthMask(true);
         if (DEBUG_BLIT_CLOUD_TARGET) {
             cloudTarget.bindWrite(false);
@@ -120,7 +129,7 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         SimpleCloudsRenderer.renderCloudsOpaque(generator, stack, projMat, renderer.getFogStart(), renderer.getFogEnd(), partialTick,
                 cloudR, cloudG, cloudB, ((Boolean) SimpleCloudsConfig.CLIENT.frustumCulling.get()).booleanValue() ? frustum : null);
         p.popPush("clouds_transparent");
-        if (generator.transparencyEnabled()) {
+        if (ENABLE_TRANSPARENT_CLOUDS_WITH_SHADERS && generator.transparencyEnabled() && transparentVerts > 0) {
             renderer.copyDepthFromCloudsToTransparency();
             transparencyTarget.bindWrite(false);
             boolean depthMaskBeforeTransparent = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
@@ -139,12 +148,9 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         p.push("cloud_shadows");
         renderer.doCloudShadowProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudTarget.getDepthTextureId());
         p.pop();
-        p.push("clouds_composite");
-        renderer.doFinalCompositePass(viewMat, partialTick, projMat);
-        p.pop();
         p.pop();
         Matrix4f oldMcProjMat = RenderSystem.getProjectionMatrix();
-        if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue()) {
+        if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && ENABLE_STORM_FOG_WITH_SHADERS) {
             p.push("storm_fog");
             renderer.doStormPostProcessing(viewMat, partialTick, projMat, camX, camY, camZ, cloudR, cloudG, cloudB);
             RenderTarget target = renderer.getBlurTarget();
@@ -161,35 +167,36 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
             RenderSystem.defaultBlendFunc();
             RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
             p.pop();
+        } else if (((Boolean) SimpleCloudsConfig.CLIENT.renderStormFog.get()).booleanValue() && !warnedStormFogSkipped) {
+            warnedStormFogSkipped = true;
         }
 
         mc.getMainRenderTarget().bindWrite(false);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, cloudTarget.getColorTextureId(), 0);
-        RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
+        int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+        try {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
+            RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
 
-        stack.pushPose();
-        stack.translate(-camX, -camY, -camZ);
-        renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
-        stack.popPose();
+            stack.pushPose();
+            stack.translate(-camX, -camY, -camZ);
+            renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
+            stack.popPose();
 
-        if (DEBUG_BLIT_CLOUD_TARGET) {
-            debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+            if (DEBUG_BLIT_CLOUD_TARGET) {
+                debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+                mc.getMainRenderTarget().bindWrite(false);
+                cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
+                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
+                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
+                GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+            }
+        } finally {
+            RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
             mc.getMainRenderTarget().bindWrite(false);
-            cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
-            GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+            restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
         }
-
-        RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
-        GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_TEXTURE_2D, mc.getMainRenderTarget().getColorTextureId(), 0);
-    }
-
-    private static PoseStack createPoseStack(Matrix4f viewMat) {
-        PoseStack stack = new PoseStack();
-        stack.mulPose(viewMat);
-        return stack;
     }
 
     @Override
@@ -216,6 +223,12 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         return true;
     }
 
+    private static PoseStack createPoseStack(Matrix4f viewMat) {
+        PoseStack stack = new PoseStack();
+        stack.mulPose(viewMat);
+        return stack;
+    }
+
     private static void renderLightning(WorldEffects effects, SimpleCloudsRenderer renderer, Minecraft mc, PoseStack stack, float partialTick, double camX, double camY, double camZ) {
         Tesselator tesselator = Tesselator.getInstance();
         RenderSystem.enableBlend();
@@ -233,46 +246,27 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
                 float dist = bolt.getPosition().distance((float) camX, (float) camY, (float) camZ);
                 bolt.render(stack, (VertexConsumer) builder, partialTick, 1.0f, 1.0f, 1.0f, renderer.getFadeFactorForDistance(dist));
             });
-            BufferUploader.drawWithShader(builder.build());
+            BufferUploader.drawWithShader(builder.buildOrThrow());
             RenderSystem.setShaderFogStart(cachedFogStart);
             RenderSystem.defaultBlendFunc();
         }
         RenderSystem.disableBlend();
     }
 
-    private static boolean copyVanillaDepthToCloudTarget(RenderTarget cloudTarget, RenderTarget source) {
-        if (cloudTarget == null || source == null) {
-            return false;
+    private static void restoreDepthAttachment(int attachmentType, int attachmentName) {
+        if (attachmentType == GL11.GL_TEXTURE && attachmentName > 0) {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, attachmentName, 0);
+        } else if (attachmentType == GL30.GL_RENDERBUFFER && attachmentName > 0) {
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, attachmentName);
+        } else {
+            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, 0, 0);
         }
-        int cloudDepthTex = cloudTarget.getDepthTextureId();
-        if (cloudDepthTex <= 0) {
-            return false;
-        }
-        int sourceFbo = ((MixinRenderTargetAccessor) source).simpleclouds$getFrameBufferId();
-        if (sourceFbo <= 0) {
-            return false;
-        }
-        GlStateManager._getError();
-        int prevReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        int prevTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        IntBuffer viewport = BufferUtils.createIntBuffer(4);
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-
-        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, sourceFbo);
-        int copyW = Math.min(cloudTarget.width, source.width);
-        int copyH = Math.min(cloudTarget.height, source.height);
-        GL11.glViewport(0, 0, copyW, copyH);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, cloudDepthTex);
-        GL11.glReadBuffer(GL11.GL_NONE);
-        GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, copyW, copyH);
-
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, prevTexture);
-        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
-        GL11.glViewport(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
-        return GlStateManager._getError() == GL11.GL_NO_ERROR;
     }
 
     private static void debug(String msg) {
+        if (!DEBUG_LOGGING) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (!msg.equals(lastDebugMsg) || now - lastDebugMs > DEBUG_INTERVAL_MS) {
             //System.out.println("[OFSC DEBUG] " + msg);

@@ -14,6 +14,7 @@
     "SimpleCloudsCopyDepthGuardMixin",
     "SimpleCloudsPipelineSelectMixin",
     "SimpleCloudsForcePipelineMixin",
+    "SimpleCloudsWorldEffectsWeatherMixin",
     "dh.SimpleCloudsDhForgeEventsMixin",
     "dh.SimpleCloudsBeforeDhRenderHandlerMixin",
     "dh.SimpleCloudsAfterDhEventGuardMixin",
