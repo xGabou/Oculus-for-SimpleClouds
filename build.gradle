@@ -219,11 +219,11 @@ modrinth {
     token = System.getenv("MODRINTH_TOKEN")
     projectId = "8WzyyTkv" // from your Modrinth project URL
     versionNumber = "NeoForge-${project.version}"
-    versionName = "Project Atmosphere ${mod_version}"
+    versionName = "Iris for Simple Clouds ${mod_version}"
     changelog = rootProject.file("IRISSCchangelog.md").text
     gameVersions = ["1.21.1"]
     loaders = ["neoforge"]
-    versionType = "beta"
+    versionType = "release" // options: "alpha", "beta", "release"
     dependencies {
         required.project "e0bNACJD"
         required.project "GchcoXML"
