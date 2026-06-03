@@ -347,7 +347,10 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
                 float dist = bolt.getPosition().distance((float) camX, (float) camY, (float) camZ);
                 bolt.render(stack, (VertexConsumer) builder, partialTick, 1.0f, 1.0f, 1.0f, renderer.getFadeFactorForDistance(dist));
             });
-            BufferUploader.drawWithShader(builder.buildOrThrow());
+            MeshData meshData = builder.build();
+            if (meshData != null) {
+                BufferUploader.drawWithShader(meshData);
+            }
             RenderSystem.setShaderFogStart(cachedFogStart);
             RenderSystem.defaultBlendFunc();
         }

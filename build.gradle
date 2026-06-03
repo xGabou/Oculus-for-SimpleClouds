@@ -227,9 +227,8 @@ modrinth {
     loaders = ["neoforge"]
     versionType = "release" // options: "alpha", "beta", "release"
     dependencies {
-        required.project "e0bNACJD"
-        required.project "GchcoXML"
         required.project "YL57xq9U"
+        required.project "LtZfKhel"
     }
     uploadFile = file("build/libs/${archivesBaseName}-${version}.jar")
 }

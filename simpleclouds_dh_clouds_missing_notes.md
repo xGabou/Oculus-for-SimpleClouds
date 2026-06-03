@@ -43,3 +43,26 @@ Observed/result:
 
 - NeoForge build succeeded on 2026-06-02 with `.\gradlew.bat jar`.
 - Output jar: `G:\mods\Oculus-for-SImpleClouds-neoforge\build\libs\oculus_for_simpleclouds-0.0.2.jar`.
+
+## NeoForge Crash Guard: Empty Lightning Buffer In DH And No-DH Paths
+
+New evidence:
+
+- The client can crash in both the DH and no-DH pipelines with `java.lang.IllegalStateException: BufferBuilder was empty`.
+- The stack traces point to `ShaderAwareDhPipeline.renderLightning(...)` and `ShaderAwareNoDhPipeline.renderLightning(...)`.
+- The crash happens even when `hasLightningToRender()` is true, which means the builder can still end up with zero submitted vertices after the per-bolt distance/fade filtering.
+
+Patch:
+
+- Replaced the unconditional `buildOrThrow()` call in both lightning render paths with `build()`.
+- Guarded the draw call so `BufferUploader.drawWithShader(...)` only runs when `build()` returns a non-null mesh.
+
+Why:
+
+- `BufferBuilder.buildOrThrow()` is the direct source of the crash when lightning state exists but no quads are emitted.
+- Using the non-throwing build path preserves normal lightning rendering while making the empty case a no-op instead of a fatal exception.
+
+Expected behavior:
+
+- DH and non-DH rendering should no longer crash when the lightning buffer is empty.
+- If no lightning geometry is actually produced for a frame, the renderer should skip the draw cleanly.

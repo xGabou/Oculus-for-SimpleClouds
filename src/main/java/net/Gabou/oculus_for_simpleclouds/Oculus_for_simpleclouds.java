@@ -11,6 +11,7 @@ import net.Gabou.oculus_for_simpleclouds.interiorfog.InteriorCloudClientEvents;
 import net.Gabou.oculus_for_simpleclouds.interiorfog.InteriorCloudConfig;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
@@ -51,11 +52,13 @@ public class Oculus_for_simpleclouds {
         NeoForge.EVENT_BUS.addListener(FinalCloudCompositeHandler::onRenderStage);
         NeoForge.EVENT_BUS.register(InteriorCloudClientEvents.class);
 
-        event.enqueueWork(ShaderAwareDhEventBridge::register);
-
+        if (ModList.get().isLoaded("distanthorizons")) {
+            event.enqueueWork(ShaderAwareDhEventBridge::register);
+        }
         if (CompatHelper.isIrisLoaded() && !overWriteLogic) {
             event.enqueueWork(SimpleCloudsIrisWeatherCompat::init);
         }
+
     }
     private void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {

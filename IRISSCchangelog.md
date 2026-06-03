@@ -1,5 +1,8 @@
 ☁️ **Oculus for Simple Clouds update**
 
+
+### Small fix was needed in the .toml file to remove the required dependency on Distant Horizons.
+
 **DH COMPAT IS HERE FOR 1.21.1** 🔥🔥🔥
 
 Distant Horizons compatibility is finally working on the NeoForge branch.
