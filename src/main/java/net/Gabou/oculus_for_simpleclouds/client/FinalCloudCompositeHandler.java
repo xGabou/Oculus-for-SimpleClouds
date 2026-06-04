@@ -32,6 +32,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent.Stage;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
@@ -365,11 +366,22 @@ public final class FinalCloudCompositeHandler {
                 return;
             }
             if (event.getStage() == Stage.AFTER_LEVEL) {
+                refreshVoxySceneDepthBeforeComposite();
                 compositeClouds();
                 capturedThisFrame = false;
                 combinedValidThisFrame = false;
             }
 
+        }
+    }
+
+    private static void refreshVoxySceneDepthBeforeComposite() {
+        if (!ModList.get().isLoaded("voxy")) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level != null && mc.getMainRenderTarget() != null) {
+            captureVanillaDepthSource(mc.getMainRenderTarget());
         }
     }
 
