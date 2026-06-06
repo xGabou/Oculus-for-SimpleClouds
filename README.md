@@ -99,6 +99,8 @@ Work is ongoing to
 4. Install this mod  
 5. Install Atmospheric Shaders for Simple Clouds Support
 
+This mod is client-side only. Do not install it on a server.
+
 The addon only activates when both Oculus and SimpleClouds with compatible shaders are present.
 
 ---
