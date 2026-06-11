@@ -19,6 +19,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
@@ -52,7 +53,9 @@ public class Oculus_for_simpleclouds {
         ClientLauncherGuards.enforce();
         ClientLauncherBlocker.install();
         MinecraftForge.EVENT_BUS.register(InteriorCloudClientEvents.class);
-        event.enqueueWork(ShaderAwareDhEventBridge::register);
+        if (ModList.get().isLoaded("distanthorizons")) {
+            event.enqueueWork(ShaderAwareDhEventBridge::register);
+        }
         if (CompatHelper.isOculusLoaded() && !overWriteLogic) {
             event.enqueueWork(SimpleCloudsIrisWeatherCompat::init);
         }

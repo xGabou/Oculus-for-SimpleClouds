@@ -16,9 +16,6 @@ public final class ShaderAwareDhEventBridge {
         if (registered) {
             return;
         }
-        if (!ModList.get().isLoaded("distanthorizons")) {
-            return;
-        }
 
         try {
             DhApi.events.bind(DhApiBeforeRenderPassEvent.class, new SimpleCloudsDhSetupHandler());
