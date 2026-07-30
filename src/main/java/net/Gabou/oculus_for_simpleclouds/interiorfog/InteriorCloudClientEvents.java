@@ -1,6 +1,5 @@
 package net.Gabou.oculus_for_simpleclouds.interiorfog;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.FogRenderer.FogMode;
 import net.minecraft.util.Mth;
@@ -24,10 +23,11 @@ public class InteriorCloudClientEvents {
             return;
         }
 
-        float fogStart = Mth.lerp(strength, RenderSystem.getShaderFogStart(), InteriorCloudConfig.FOG_START.get().floatValue());
-        float fogEnd = Mth.lerp(strength, RenderSystem.getShaderFogEnd(), InteriorCloudConfig.FOG_END.get().floatValue());
-        RenderSystem.setShaderFogStart(Math.min(fogStart, fogEnd - 1.0F));
-        RenderSystem.setShaderFogEnd(fogEnd);
+        float fogStart = Mth.lerp(strength, event.getNearPlaneDistance(), InteriorCloudConfig.FOG_START.get().floatValue());
+        float fogEnd = Mth.lerp(strength, event.getFarPlaneDistance(), InteriorCloudConfig.FOG_END.get().floatValue());
+        event.setNearPlaneDistance(Math.min(fogStart, fogEnd - 1.0F));
+        event.setFarPlaneDistance(fogEnd);
+        event.setCanceled(true);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)

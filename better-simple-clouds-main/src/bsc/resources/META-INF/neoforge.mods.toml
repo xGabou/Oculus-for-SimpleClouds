@@ -1,0 +1,93 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
+issueTrackerURL = "https://github.com/leonraineri/make-it-compatible/issues"
+
+[[mods]]
+modId = "bettersimpleclouds"
+version = "${mod_version}"
+displayName = "Better Simple Clouds"
+logoFile = "icon.png"
+logoBlur = false
+authors = "leon.raineri"
+credits = "nonamecrackers2 (Simple Clouds)"
+description = '''Better Simple Clouds is an add-on for Simple Clouds that polishes how its volumetric clouds look
+and behave:
+
+- In-cloud immersion: flying inside a cloud feels like being inside one - solid cloud faces, a filled interior
+  ramping to an opaque view-distance shell, drifting motes and optional cloud fog.
+- Far-cloud detail: cap how coarse distant clouds get, soften or cull far small clouds, and remove stray single
+  floating cubes, so the horizon isn't littered with giant cloud blocks.
+- Storm fog: the distant rain wall can stay visible behind clouds, and its whole-screen blur can be disabled so it
+  stops smearing over near rain (e.g. Pretty Rain).
+- Transparency fix: clears the mottled 'inside and outside coincide' noise on translucent cloud edges seen through
+  other clouds.
+- Cloud spawning blacklist: block any cloud type from ever spawning (only the tiny 'itty bitty' type by default) -
+  natural spawns re-roll to other types, API spawns are refused, and existing ones are swept away.
+- Optional experimental concurrent cloud mesh generation for raw FPS.
+
+Video/visual options live in Sodium's video settings (Reese's Sodium Options compatible); the spawn blacklist and
+other behaviour options live in Mods -> Better Simple Clouds -> Config, with a searchable options screen.'''
+
+# Each feature declares its own mixin config, gated by a plugin so its mixins apply only when Simple Clouds is
+# present (see dev.bettersimpleclouds.core.RequiredModsMixinPlugin).
+[[mixins]]
+config = "bettersimpleclouds.immersion.mixins.json"
+
+[[mixins]]
+config = "bettersimpleclouds.performance.mixins.json"
+
+[[mixins]]
+config = "bettersimpleclouds.spawning.mixins.json"
+
+# ReTerraForged worldgen crash-guard (gated on reterraforged being present).
+[[mixins]]
+config = "bettersimpleclouds.reterraforged.mixins.json"
+
+# --- Dependencies ---------------------------------------------------------------------------------
+
+[[dependencies.bettersimpleclouds]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.bettersimpleclouds]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+# The whole mod is about Simple Clouds, so it is a hard requirement (and must load before us).
+[[dependencies.bettersimpleclouds]]
+modId = "simpleclouds"
+type = "required"
+versionRange = "[0.7,)"
+ordering = "AFTER"
+side = "BOTH"
+
+# Sodium is optional: when present, the video options appear in its video settings (Reese's Sodium Options).
+[[dependencies.bettersimpleclouds]]
+modId = "sodium"
+type = "optional"
+versionRange = "[0.6,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+# Iris is optional and only relevant to the shader render path (storm fog / cloud appearance under shaderpacks).
+[[dependencies.bettersimpleclouds]]
+modId = "iris"
+type = "optional"
+versionRange = "[1.8,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+# ReTerraForged is optional; the bundled worldgen crash-guard only applies when it's present.
+[[dependencies.bettersimpleclouds]]
+modId = "reterraforged"
+type = "optional"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "BOTH"

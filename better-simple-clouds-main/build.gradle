@@ -1,0 +1,98 @@
+plugins {
+    id 'java'
+    // NeoForge's official build plugin. Use the latest 2.0.x; bump if Gradle reports a newer one.
+    id 'net.neoforged.moddev' version '2.0.+'
+}
+
+group = 'dev.makeitcompatible'
+version = project.mod_version
+base.archivesName = 'better-simple-clouds'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+// Better Simple Clouds -- Simple Clouds improvements + the ReTerraForged worldgen crash-guard.
+sourceSets {
+    bsc {
+        java.srcDirs = ['src/bsc/java']
+        resources.srcDirs = ['src/bsc/resources']
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.ryanhcode.dev/releases'      ; name = 'Sable'        }
+    maven { url = 'https://maven.su5ed.dev/releases'          ; name = 'CreativeCore' }
+    maven { url = 'https://api.modrinth.com/maven'            ; name = 'Modrinth'     }
+    maven { url = 'https://cursemaven.com'; content { includeGroup 'curse.maven' } }
+    maven { url = 'https://maven.caffeinemc.net/releases'     ; name = 'CaffeineMC'   }
+    maven { url = 'https://maven.nonamecrackers2.dev/releases'; name = 'nonamecrackers2' }
+    maven { url = 'https://maven.bawnorton.com/releases'      ; name = 'Bawnorton'    } // MixinSquared
+    // Shared, provided-at-runtime mod jars live two levels up (see ../../libs/README.md).
+    flatDir { dirs 'libs', '../../libs' }
+}
+
+neoForge {
+    version = project.neoforge_version
+
+    parchment {
+        minecraftVersion = project.parchment_minecraft
+        mappingsVersion = project.parchment_version
+    }
+
+    runs {
+        client {
+            client()
+            gameDirectory = file('run')
+            programArguments.addAll('--quickPlaySingleplayer', 'New World')
+        }
+    }
+
+    mods {
+        bettersimpleclouds {
+            sourceSet sourceSets.bsc
+        }
+    }
+
+    addModdingDependenciesTo sourceSets.bsc
+}
+
+// The default (empty) main source set builds nothing we ship; the real artifact has its own jar task.
+tasks.named('jar') { enabled = false }
+
+configurations {
+    bscCompileOnly.extendsFrom compileOnly
+}
+
+dependencies {
+    // Every mod this patch bridges, provided at runtime by the modpack (compileOnly here so they are NOT
+    // bundled). The patches self-gate at runtime. Preferred source: local jars in ../../libs.
+    compileOnly fileTree(dir: 'libs', include: ['*.jar'])
+    compileOnly fileTree(dir: '../../libs', include: ['*.jar'])
+
+    // Simple Clouds' public API (ModifyCloudRenderDistanceEvent etc.); bundled into Simple Clouds at runtime.
+    compileOnly 'nonamecrackers2:simplecloudsapi-neoforge:1.4-1.21.1'
+}
+
+// Interpolate gradle.properties into neoforge.mods.toml (so ${mod_version} stays in one place).
+tasks.named('processBscResources', ProcessResources) {
+    final def props = [mod_version: project.mod_version]
+    inputs.properties(props)
+    filesMatching('META-INF/neoforge.mods.toml') { expand(props) }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Better Simple Clouds  -- a plain mod jar.
+// ------------------------------------------------------------------------------------------------
+tasks.register('bscJar', Jar) {
+    from sourceSets.bsc.output
+    archiveBaseName = 'better-simple-clouds'
+    manifest {
+        attributes([
+            'Specification-Title'   : 'better-simple-clouds',
+            'Specification-Version' : project.version,
+            'Implementation-Title'  : 'Better Simple Clouds',
+            'Implementation-Version': project.version
+        ])
+    }
+}
+tasks.named('assemble') { dependsOn 'bscJar' }

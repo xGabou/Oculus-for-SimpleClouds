@@ -1,0 +1,13 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "dev.bettersimpleclouds.reterraforged.mixin",
+    "plugin": "dev.bettersimpleclouds.reterraforged.ReterraforgedMixinPlugin",
+    "compatibilityLevel": "JAVA_21",
+    "mixins": [
+        "CellSamplerMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}

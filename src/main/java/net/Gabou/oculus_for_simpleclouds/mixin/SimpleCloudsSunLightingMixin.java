@@ -1,6 +1,7 @@
 package net.Gabou.oculus_for_simpleclouds.mixin;
 
 import dev.nonamecrackers2.simpleclouds.client.renderer.SimpleCloudsRenderer;
+import net.Gabou.oculus_for_simpleclouds.interiorfog.InteriorCloudShaderFog;
 import net.Gabou.oculus_for_simpleclouds.visual.SimpleCloudsSunLighting;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.joml.Matrix4f;
@@ -15,5 +16,6 @@ public abstract class SimpleCloudsSunLightingMixin {
     @Inject(method = "prepareShader(Lnet/minecraft/client/renderer/ShaderInstance;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;FF)V", at = @At("TAIL"))
     private static void oculus_for_simpleclouds$applySunLightingUniforms(ShaderInstance shader, Matrix4f modelView, Matrix4f projMat, float fogStart, float fogEnd, CallbackInfo ci) {
         SimpleCloudsSunLighting.apply(shader);
+        InteriorCloudShaderFog.apply(shader);
     }
 }

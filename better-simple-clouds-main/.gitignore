@@ -1,0 +1,16 @@
+# Gradle / build
+.gradle/
+build/
+run/
+runs/
+*.log
+# IDE
+.idea/
+*.iml
+bin/
+# Local dependency jars (other people's mods — not redistributable). Provided at runtime by the modpack.
+libs/*.jar
+!libs/README.md
+ports/
+gametest*
+jartest*

@@ -1,0 +1,13 @@
+{
+    "required": false,
+    "minVersion": "0.8",
+    "package": "dev.bettersimpleclouds.performance.mixin",
+    "plugin": "dev.bettersimpleclouds.performance.SimpleCloudsPerformanceMixinPlugin",
+    "compatibilityLevel": "JAVA_21",
+    "client": [
+        "ConcurrentCloudMeshMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 0
+    }
+}

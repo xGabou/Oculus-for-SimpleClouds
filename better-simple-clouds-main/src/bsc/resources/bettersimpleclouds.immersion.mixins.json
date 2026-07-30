@@ -1,0 +1,23 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "dev.bettersimpleclouds.immersion.mixin",
+    "plugin": "dev.bettersimpleclouds.immersion.SimpleCloudsImmersionMixinPlugin",
+    "compatibilityLevel": "JAVA_21",
+    "client": [
+        "CloudLodCapMixin",
+        "CloudLodCapRebuildMixin",
+        "CloudMeshGeneratorFillMixin",
+        "CloudShaderMatchMixin",
+        "SimpleCloudsRendererSolidFacesMixin",
+        "SimpleCloudsRendererTransparencyWeightMixin",
+        "SimpleCloudsShadersMixin",
+        "StormFogBlurMixin",
+        "StormFogRainBehindCloudsMixin",
+        "ScreenSpaceWorldFogRangeMixin",
+        "CloudShaderFogRangeMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}

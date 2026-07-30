@@ -1,0 +1,622 @@
+#version 430
+
+#define TYPE ${TYPE}    //0 for multi-region, 1 for single cloud type
+#define FADE_NEAR_ORIGIN ${FADE_NEAR_ORIGIN}    //0 to disable, 1 to enable
+#define STYLE ${STYLE}     //0 for default, 1 for shaded
+#define TRANSPARENCY ${TRANSPARENCY}     //0 for no transparency, 1 for transparency
+#define FIXED_SECTION_SIZE ${FIXED_SECTION_SIZE}     //0 for false, 1 for true
+
+#define SHADE_DIRECTION normalize(vec3(0.5, 0.5, 0.5))
+
+#define TILE_PERIOD vec3(32.0, 64.0, 32.0)
+
+#define LOCAL_SIZE vec3(${LOCAL_SIZE_X}, ${LOCAL_SIZE_Y}, ${LOCAL_SIZE_Z})
+layout(local_size_x = ${LOCAL_SIZE_X}, local_size_y = ${LOCAL_SIZE_Y}, local_size_z = ${LOCAL_SIZE_Z}) in;
+
+#moj_import <simpleclouds:psrdnoise.glsl>
+
+struct LayerGroup {
+	int StartIndex;
+	int EndIndex;
+	float Storminess;
+	float StormStart;
+	float StormFadeDistance;
+	float TransparencyFade;
+};
+
+struct NoiseLayer {
+	float Height;
+	float ValueOffset;
+	float ScaleX;
+	float ScaleY;
+	float ScaleZ;
+	float FadeDistance;
+	float HeightOffset;
+	float ValueScale;
+};
+
+// ----- Opaque -----
+
+struct SideInfo {
+	int side;
+	float x;
+	float y;
+	float z;
+	float brightness;
+	float radius;
+};
+
+// ----- Transparent -----
+
+#if TRANSPARENCY == 1
+
+struct TransparentCubeInfo {
+	float x;
+	float y;
+	float z;
+	float brightness;
+	float alpha;
+	float radius;
+};
+
+#endif
+
+// -----------------------
+
+//Faces:
+//-X = 0
+//+X = 1
+//-Y = 2
+//+Y = 3
+//-Z = 4
+//+Z = 5
+
+//const uint sideIndices[6] = {
+//	0, 1, 2, 0, 2, 3
+//};
+//
+//#if TRANSPARENCY == 1
+//
+//const uint transparentCubeIndices[36] = {
+//	0, 1, 2, 0, 2, 3, //-z
+//	4, 7, 6, 4, 6, 5, //+z
+//	7, 0, 3, 7, 3, 6, //-x
+//	1, 4, 5, 1, 5, 2, //+x
+//	1, 0, 7, 1, 7, 4, //-y
+//	5, 6, 3, 5, 3, 2 //+y
+//};
+//
+//#endif
+
+// ----- Opaque Buffers -----
+
+#if FIXED_SECTION_SIZE == 0
+layout(std430) restrict buffer TotalSides {
+	uint totalSides;
+};
+#endif
+
+layout(std430) restrict writeonly buffer SideInfoBuffer {
+    SideInfo data[];
+}
+sides;
+
+layout(std430) restrict buffer SidesPerChunk {
+	uint data[];
+}
+sidesPerChunk;
+
+// ----- Transparency Buffers -----
+
+#if TRANSPARENCY == 1
+
+#if FIXED_SECTION_SIZE == 0
+layout(std430) restrict buffer TotalTransparentCubes {
+	uint totalTransparentCubes;
+};
+#endif
+
+layout(std430) restrict writeonly buffer TransparentCubeInfoBuffer {
+    TransparentCubeInfo data[];
+}
+cubesTransparent;
+
+layout(std430) restrict buffer TransparentCubesPerChunk {
+	uint data[];
+}
+transparentCubesPerChunk;
+
+#endif
+
+// ----------------------------------
+
+layout(std430) readonly buffer NoiseLayers {
+	NoiseLayer data[];
+}
+layers;
+
+layout(std430) readonly buffer LayerGroupings {
+	LayerGroup data[];
+}
+layerGroupings;
+
+#if TYPE == 0
+uniform sampler2DArray RegionsSampler;
+uniform int RegionsTexSize;
+#endif
+
+uniform int LodLevel;
+uniform int TotalLodLevels;
+uniform vec3 RenderOffset;
+uniform float Scale = 1.0;
+uniform vec3 Scroll;
+uniform float Wiggle;
+uniform vec3 Origin;
+uniform bool TestFacesFacingAway;
+uniform int DoNotOccludeSide = -1;
+uniform int ChunkIndex;
+
+// === Better Simple Clouds: in-cloud interior fill + view limiting ===
+// This file is a verbatim copy of Simple Clouds' cube_mesh.comp with the marked additions (here, in createCube, the
+// createSolidCube helper, and in main()). Better Simple Clouds redirects the mesh generator to load this instead
+// (CloudMeshGeneratorFillMixin) so that, while the camera is inside a cloud, the otherwise-hollow interior is filled
+// with translucent cubes near the camera that ramp to a SOLID OPAQUE shell at the view distance - so you genuinely
+// can't see past it (works under any shaderpack, since it's real geometry), like fog underwater. All additions are
+// inert unless MicFillStrength > 0 (set by the mixin from the patch's envelopment + config), so with the fill off
+// this behaves exactly like Simple Clouds' own shader. If Simple Clouds updates cube_mesh.comp, re-copy it and
+// re-apply the marked blocks.
+uniform float MicFillStrength = 0.0; // 0 = off; otherwise [0,1] envelopment (how deep inside the cloud)
+uniform float MicViewDist = 0.0;     // view distance in cell units (blocks / 8): haze within, opaque shell beyond
+uniform float MicHazeOpacity = 0.0;  // per-cell opacity of the translucent interior haze (constant -> exponential fog)
+uniform float MicShell = 0.0;        // > 0.5 to draw the opaque view-distance shell (hard cut-off)
+// Solid (away-facing) cloud faces are only worth generating near the camera; past this they create giant distant
+// cubes at low LOD. Gate Simple Clouds' TestFacesFacingAway to this radius (in cell units; 16 cells = 128 blocks).
+// A uniform rather than a #define so compatibility patches can widen it: an Immersive Portals portal views the
+// clouds from a camera far from Origin (fold destinations sit >512 blocks out), and every cell past this radius
+// falls back to Origin-facing culling - see-through clouds in the portal. While portals are on screen the
+// Immersive Portals patch raises this to cover the whole mesh (stock Simple Clouds' complete-mesh behaviour).
+uniform float MicSolidNearCells = 16.0;
+// Radial thickness (cell units) of the opaque shell drawn at the view distance - thick enough to be gapless.
+#define MIC_SHELL_CELLS 2.5
+// Remove small isolated "floating" cloud clusters at any LOD-coarsened ring (LodLevel >= 1, i.e. any cloud the LOD has
+// thinned). A cube is removed only if its ENTIRE 6-connected solid cluster (at this LOD) is at most this many cells - so
+// a stray single cube or a tiny blob drifting off in an LOD chunk is deleted whole, while a big formation (a huge
+// connected cluster, including its thin edges and tendrils) is never touched: the flood-fill below bails the instant the
+// cluster grows past the limit. Because removal is all-or-nothing per cluster, it can't leave holes the way the old
+// per-cube neighbour-count erosion did - the faces below stay stock Simple Clouds occlusion. Full-detail LOD-0 clouds
+// (right around the camera) are never touched. 1 = remove only single cubes; 2-6 = also remove blobs up to that many
+// cubes. 0 = off (this whole path is skipped -> stock Simple Clouds occlusion, no extra cost).
+uniform float MicMaxClusterCells = 0.0;
+// Per-cloud-type "soften LOD with distance" strength, keyed off storminess (big/"huge connected" = high storminess,
+// small = low). Thins that cloud type's wispy edges as the mesh coarsens, so you can declutter small far clouds while
+// leaving big storm systems alone. CLAMPED so it only eats thin edges, never a cloud's dense core - it can't make a
+// cloud stop rendering. Both 0 -> micLodSoften() returns 0 -> stock. Fed from config each frame.
+uniform float MicBigLodStrength = 0.0;
+uniform float MicSmallLodStrength = 0.0;
+// Hardest extra negative fade the soften can ever add (keeps dense cores above the noise threshold = clouds still render).
+#define MIC_LOD_SOFTEN_MAX 2.0
+// Cull far SMALL clouds outright: at any LOD ring (LodLevel > 0), fully drop cells whose cloud storminess is below this
+// threshold. This is the real fix for "far small clouds look like single cubes" - the LOD cap can't help (a small
+// cloud is just a few cells, so finer cells are still a few cubes), so this removes them instead. Big storm clouds
+// (storminess at/above the threshold) are untouched. 0 = off.
+uniform float MicSmallCloudCull = 0.0;
+
+#if FIXED_SECTION_SIZE == 1
+//Offset in number of mesh elements
+uniform int OpaqueMeshDataOffset;
+uniform int TransparentMeshDataOffset;
+#endif
+
+#if TRANSPARENCY == 1
+uniform int TransparencyDistance = 300;
+#endif
+
+#if TYPE == 0
+uniform vec2 RegionSampleOffset;
+#elif TYPE == 1
+uniform float FadeStart;
+uniform float FadeEnd;
+#endif
+
+#if FADE_NEAR_ORIGIN == 1
+uniform float FadeStart;
+uniform float FadeEnd;
+#endif
+
+// === Better Simple Clouds: per-cloud-type LOD softening ===
+// Extra NEGATIVE fade that thins a cloud type's edges as the mesh LOD coarsens with distance, separately for big
+// ("huge connected", high storminess) and small (low storminess) clouds. smoothstep(0.35,0.75) gives a sharp-ish
+// big/small split so it doesn't bleed into every cloud. Capped at MIC_LOD_SOFTEN_MAX so dense cores always survive -
+// it softens, it never culls a whole cloud. Added wherever fade is computed (main + cross-region neighbour test) so a
+// cell and its neighbours always agree. Both strengths 0 -> 0 -> stock.
+float micLodSoften(float groupStorminess)
+{
+	float s = clamp(groupStorminess, 0.0, 1.0);
+	// Hard cull of far small clouds: at any LOD ring, drop low-storminess (small) clouds entirely.
+	if (MicSmallCloudCull > 0.0 && LodLevel > 0 && s < MicSmallCloudCull)
+		return -100000.0;
+	if (MicBigLodStrength <= 0.0 && MicSmallLodStrength <= 0.0)
+		return 0.0;
+	float lodT = TotalLodLevels > 1 ? float(LodLevel) / float(TotalLodLevels - 1) : 0.0;
+	if (lodT <= 0.0)
+		return 0.0;
+	float strength = mix(MicSmallLodStrength, MicBigLodStrength, smoothstep(0.35, 0.75, s));
+	return -MIC_LOD_SOFTEN_MAX * lodT * clamp(strength, 0.0, 1.0);
+}
+
+float getNoiseForLayer(NoiseLayer layer, float x, float y, float z, out vec3 gradient)
+{
+	if (y < layer.HeightOffset || y > layer.HeightOffset + layer.Height - 1)
+		return -10000.0;
+	vec3 scale = vec3(layer.ScaleX, layer.ScaleY, layer.ScaleZ);
+	vec3 scrollScaled = Scroll / scale;
+	vec3 samplePos = vec3(x, y, z) / scale + scrollScaled;
+	float noise = psrdnoise(samplePos, TILE_PERIOD, Wiggle, gradient) * layer.ValueScale + layer.ValueOffset;
+	float heightDelta = y - layer.HeightOffset;
+	noise -= 1.0 - clamp(heightDelta / layer.FadeDistance, 0.0, 1.0);
+	noise -= 1.0 - clamp((layer.Height - heightDelta) / layer.FadeDistance, 0.0, 1.0);
+	return noise;
+}
+
+float getNoiseForLayerGroup(LayerGroup group, float x, float y, float z, out vec3 gradient)
+{
+	int totalLayers = group.EndIndex - group.StartIndex;
+	if (totalLayers == 0)
+	{
+		return -10000.0;
+	}
+	else if (totalLayers == 1)
+	{
+		return getNoiseForLayer(layers.data[group.StartIndex], x, y, z, gradient);
+	}
+	else
+	{
+		vec3 finalGradient = vec3(0.0);
+		float combinedNoise = 0.0;
+		bool anyValid = false;
+		for (int i = 0; i < totalLayers; i++)
+		{
+			vec3 gradForLayer = vec3(0.0);
+			float valForLayer = getNoiseForLayer(layers.data[i + group.StartIndex], x, y, z, gradForLayer);
+			if (valForLayer > -10.0)
+			{
+				combinedNoise += valForLayer;
+				finalGradient += gradForLayer;
+				anyValid = true;
+			}
+		}
+		gradient = finalGradient;
+		if (anyValid)
+			return combinedNoise;
+		else
+			return -10000.0;
+	}
+	return 0.0;
+}
+
+bool isPosValid(float x, float y, float z, LayerGroup group, float fade)
+{
+	vec3 gradient = vec3(0.0);
+	return getNoiseForLayerGroup(group, x, y, z, gradient) + fade > 0.0;
+}
+
+bool isPosValid(float x, float y, float z, int nx, int nz)
+{
+#if TYPE == 0
+	vec2 texelCoord = gl_GlobalInvocationID.xz + RegionSampleOffset + vec2(nx, nz);
+    vec4 info = texture(RegionsSampler, vec3(texelCoord / RegionsTexSize, float(LodLevel)));
+    uint regionId = uint(info.r);
+    LayerGroup group = layerGroupings.data[regionId];
+    float fade = -5.0 * pow(1.0 - info.g, 10.0);
+#if FADE_NEAR_ORIGIN == 1
+    float len = distance(vec2(x, z), Origin.xz);
+	fade = min(fade, -5.0 * (1.0 - min(max(len - FadeStart, 0.0) / (FadeEnd - FadeStart), 1.0)));
+#endif
+#elif TYPE == 1
+	LayerGroup group = layerGroupings.data[0];
+	float len = distance(vec2(x, z), Origin.xz);
+	float fade = -5.0 * min(max(len - FadeStart, 0.0) / (FadeEnd - FadeStart), 1.0);
+#endif
+    fade += micLodSoften(group.Storminess); // Better Simple Clouds: keep the neighbour test consistent with the softened cell
+    return isPosValid(x, y, z, group, fade);
+}
+
+bool shouldNotOcclude(int index)
+{
+	if (DoNotOccludeSide != -1 && index == DoNotOccludeSide)
+	{
+		vec3 id = gl_GlobalInvocationID;
+		vec3 size = gl_NumWorkGroups * LOCAL_SIZE;
+		if (DoNotOccludeSide == 1)
+			return id.x == size.x - 1.0;
+		else if (DoNotOccludeSide == 0)
+			return id.x == 0.0;
+		else if (DoNotOccludeSide == 3)
+			return id.y == size.y - 1.0;
+		else if (DoNotOccludeSide == 2)
+			return id.y == 0.0;
+		else if (DoNotOccludeSide == 5)
+			return id.z == size.z - 1.0;
+		else if (DoNotOccludeSide == 4)
+			return id.z == 0.0;
+		else
+			return false;			
+	}
+	else
+	{
+		return false;
+	}
+}
+
+// ----- Opaque -----
+
+void createFace(vec3 center, float cubeRadius, int index, float brightness)
+{
+#if FIXED_SECTION_SIZE == 0
+	atomicAdd(sidesPerChunk.data[ChunkIndex], 1u);
+	uint currentFace = atomicAdd(totalSides, 1u);
+#elif FIXED_SECTION_SIZE == 1
+	uint currentFace = atomicAdd(sidesPerChunk.data[ChunkIndex], 1u);
+#endif
+	SideInfo side;
+	side.side = index;
+	side.x = center.x;
+	side.y = center.y;
+	side.z = center.z;
+	side.brightness = brightness;
+	side.radius = cubeRadius;
+#if FIXED_SECTION_SIZE == 0
+	sides.data[currentFace] = side;
+#elif FIXED_SECTION_SIZE == 1
+	sides.data[OpaqueMeshDataOffset + currentFace] = side;
+#endif
+}
+
+// === Better Simple Clouds: remove small isolated "floating" cloud clusters at far LOD ===
+// "Solid" test for the cell at integer cell-offset (dx,dy,dz) from the current invocation's cell (x,y,z). Always uses
+// the region-sampling overload of isPosValid so a cell and its neighbours are evaluated exactly the way main() and the
+// face-occlusion tests evaluate them (offset 0 re-reads the current region = the same group/fade main() used).
+bool micSolidAt(float x, float y, float z, int dx, int dy, int dz)
+{
+	return isPosValid(x + float(dx) * Scale, y + float(dy) * Scale, z + float(dz) * Scale, dx, dz);
+}
+
+// The six face-neighbour directions, in cell units.
+const ivec3 MIC_DIRS[6] = ivec3[6](
+	ivec3( 1, 0, 0), ivec3(-1, 0, 0),
+	ivec3( 0, 1, 0), ivec3( 0, -1, 0),
+	ivec3( 0, 0, 1), ivec3( 0, 0, -1));
+
+// True iff the solid cell at (x,y,z) belongs to a connected cluster of at most maxCells solid cells - i.e. a small
+// floater to remove. Flood-fills the cell's own 6-connected component in cell-offset space (seeded from (0,0,0), which
+// createCube already knows is solid) and bails the instant the component exceeds maxCells, so a big formation (a huge
+// component, including its thin edges/tendrils) returns false almost immediately and is never eroded. Every cell of a
+// component floods the SAME component, so they all reach the same verdict: the cluster is removed (or kept) as a whole
+// and removal never punches a hole in a surface. maxCells is small (<= 6) so the search stays tiny and bounded.
+bool micInSmallCluster(float x, float y, float z, int maxCells)
+{
+	maxCells = clamp(maxCells, 1, 6);
+	ivec3 visited[6];          // a removable cluster has at most maxCells (<= 6) cells
+	int count = 0;
+	int head = 0;
+	visited[count++] = ivec3(0, 0, 0);   // the seed cell (already known solid)
+	while (head < count)
+	{
+		ivec3 cur = visited[head++];
+		for (int i = 0; i < 6; i++)
+		{
+			ivec3 nb = cur + MIC_DIRS[i];
+			bool seen = false;
+			for (int j = 0; j < count; j++)
+			{
+				if (visited[j] == nb)
+				{
+					seen = true;
+					break;
+				}
+			}
+			if (seen)
+				continue;
+			if (!micSolidAt(x, y, z, nb.x, nb.y, nb.z))
+				continue;
+			if (count >= maxCells)   // one more solid cell than allowed -> the component is "big" -> keep it
+				return false;
+			visited[count++] = nb;
+		}
+	}
+	return true;                      // whole component explored and it fit within maxCells -> small floater -> remove
+}
+
+void createCube(float x, float y, float z, float cubeRadius, float brightness, float fade, LayerGroup group)
+{
+	vec3 pos = vec3(x, y, z);
+	vec3 norm = normalize(pos - Origin);
+	vec3 center = pos + cubeRadius;
+	// Better Simple Clouds: only keep away-facing faces for cells near the camera; far away they just produce giant
+	// low-LOD cubes (the "huge cube at render distance"). Past the radius this falls back to normal facing culling.
+	bool solidFaces = TestFacesFacingAway && distance(pos, Origin) < MicSolidNearCells;
+	// Better Simple Clouds: remove small isolated "floating" clusters at any LOD-coarsened ring (LodLevel >= 1). The whole
+	// cluster is dropped only when its connected size is <= MicMaxClusterCells, so single stray cubes / tiny blobs in LOD
+	// chunks vanish while big formations (huge connected clusters) are left completely intact - no surface erosion, no
+	// holes, so the faces below stay Simple Clouds' stock occlusion, bit-for-bit. 0 = off (skipped entirely).
+	if (MicMaxClusterCells >= 1.0 && LodLevel >= 1 && micInSmallCluster(x, y, z, int(MicMaxClusterCells + 0.5)))
+		return;
+	//-Y
+	if ((solidFaces || dot(norm, vec3(0.0, -1.0, 0.0)) <= 0.0) && (!isPosValid(x, y - Scale, z, group, fade) || shouldNotOcclude(2)))
+		createFace(center, cubeRadius, 2, brightness);
+	//+Y
+	if ((solidFaces || dot(norm, vec3(0.0, 1.0, 0.0)) <= 0.0) && (!isPosValid(x, y + Scale, z, group, fade) || shouldNotOcclude(3)))
+		createFace(center, cubeRadius, 3, brightness);
+	//-X
+	if ((solidFaces || dot(norm, vec3(-1.0, 0.0, 0.0)) <= 0.0) && (!isPosValid(x - Scale, y, z, -1, 0) || shouldNotOcclude(0)))
+		createFace(center, cubeRadius, 0, brightness);
+	//+X
+	if ((solidFaces || dot(norm, vec3(1.0, 0.0, 0.0)) <= 0.0) && (!isPosValid(x + Scale, y, z, 1, 0) || shouldNotOcclude(1)))
+		createFace(center, cubeRadius, 1, brightness);
+	//-Z
+	if ((solidFaces || dot(norm, vec3(0.0, 0.0, -1.0)) <= 0.0) && (!isPosValid(x, y, z - Scale, 0, -1) || shouldNotOcclude(4)))
+		createFace(center, cubeRadius, 4, brightness);
+	//+Z
+	if ((solidFaces || dot(norm, vec3(0.0, 0.0, 1.0)) <= 0.0) && (!isPosValid(x, y, z + Scale, 0, 1) || shouldNotOcclude(5)))
+		createFace(center, cubeRadius, 5, brightness);
+}
+
+// Better Simple Clouds: emit an opaque cube for the view-distance shell that occludes everything beyond it while inside
+// a cloud. Bypasses neighbour-occlusion (so the shell is solid even between cloud cells) but still only emits the
+// faces that point toward the camera - emitting all six would make adjacent shell cells share coincident faces, which
+// z-fight into flickering "glitchy" geometry. Camera-facing faces alone occlude the view just the same.
+// === Better Simple Clouds: true if createCube() above would emit at least one opaque face for this cell - i.e. the
+// cell sits on the cloud's SURFACE and already has real geometry at exactly this position. Mirrors createCube's
+// per-face conditions exactly, so the two can never disagree about what is solid.
+//
+// The interior fill MUST skip such cells. Both the haze cube and the view-distance shell are emitted at the same
+// position and the same radius as createCube's faces, so on a surface cell they land exactly coincident with geometry
+// that is already there. Two surfaces at identical depth - rasterized from different meshes (the opaque pass expands
+// per-side quads, the fill expands a whole cube) - disagree in the last bits of float depth, so the depth test
+// resolves them inconsistently from pixel to pixel and frame to frame. That is the shimmering "weird faces" pattern:
+// it appears wherever a cloud surface is within the fill radius, inside the cloud or out.
+//
+// A cell createCube leaves alone emits nothing at all (faces between two solid cells are culled) - that is the hollow
+// interior the fill exists to fill, and it is the only place the fill may safely add geometry. ===
+bool micHasOpaqueFace(float x, float y, float z, LayerGroup group, float fade)
+{
+	vec3 pos = vec3(x, y, z);
+	vec3 norm = normalize(pos - Origin);
+	bool solidFaces = TestFacesFacingAway && distance(pos, Origin) < MicSolidNearCells;
+	if ((solidFaces || dot(norm, vec3(0.0, -1.0, 0.0)) <= 0.0) && (!isPosValid(x, y - Scale, z, group, fade) || shouldNotOcclude(2)))
+		return true;
+	if ((solidFaces || dot(norm, vec3(0.0, 1.0, 0.0)) <= 0.0) && (!isPosValid(x, y + Scale, z, group, fade) || shouldNotOcclude(3)))
+		return true;
+	if ((solidFaces || dot(norm, vec3(-1.0, 0.0, 0.0)) <= 0.0) && (!isPosValid(x - Scale, y, z, -1, 0) || shouldNotOcclude(0)))
+		return true;
+	if ((solidFaces || dot(norm, vec3(1.0, 0.0, 0.0)) <= 0.0) && (!isPosValid(x + Scale, y, z, 1, 0) || shouldNotOcclude(1)))
+		return true;
+	if ((solidFaces || dot(norm, vec3(0.0, 0.0, -1.0)) <= 0.0) && (!isPosValid(x, y, z - Scale, 0, -1) || shouldNotOcclude(4)))
+		return true;
+	if ((solidFaces || dot(norm, vec3(0.0, 0.0, 1.0)) <= 0.0) && (!isPosValid(x, y, z + Scale, 0, 1) || shouldNotOcclude(5)))
+		return true;
+	return false;
+}
+
+void createSolidCube(float x, float y, float z, float cubeRadius, float brightness)
+{
+	vec3 pos = vec3(x, y, z);
+	vec3 norm = normalize(pos - Origin);
+	vec3 center = pos + cubeRadius;
+	if (dot(norm, vec3(-1.0, 0.0, 0.0)) <= 0.0) createFace(center, cubeRadius, 0, brightness);
+	if (dot(norm, vec3(1.0, 0.0, 0.0)) <= 0.0) createFace(center, cubeRadius, 1, brightness);
+	if (dot(norm, vec3(0.0, -1.0, 0.0)) <= 0.0) createFace(center, cubeRadius, 2, brightness);
+	if (dot(norm, vec3(0.0, 1.0, 0.0)) <= 0.0) createFace(center, cubeRadius, 3, brightness);
+	if (dot(norm, vec3(0.0, 0.0, -1.0)) <= 0.0) createFace(center, cubeRadius, 4, brightness);
+	if (dot(norm, vec3(0.0, 0.0, 1.0)) <= 0.0) createFace(center, cubeRadius, 5, brightness);
+}
+
+// ----- Transparent -----
+
+#if TRANSPARENCY == 1
+
+void createTransparentCube(float x, float y, float z, float cubeRadius, float brightness, float alpha)
+{
+#if FIXED_SECTION_SIZE == 0
+	atomicAdd(transparentCubesPerChunk.data[ChunkIndex], 1u);
+	uint currentCube = atomicAdd(totalTransparentCubes, 1u);
+#elif FIXED_SECTION_SIZE == 1
+	uint currentCube = atomicAdd(transparentCubesPerChunk.data[ChunkIndex], 1u);
+#endif
+	TransparentCubeInfo cube;
+	cube.x = x + cubeRadius;
+	cube.y = y + cubeRadius;
+	cube.z = z + cubeRadius;
+	cube.brightness = brightness;
+	cube.alpha = alpha;
+	cube.radius = cubeRadius;
+#if FIXED_SECTION_SIZE == 0
+	cubesTransparent.data[currentCube] = cube;
+#elif FIXED_SECTION_SIZE == 1
+	cubesTransparent.data[TransparentMeshDataOffset + currentCube] = cube;
+#endif
+}
+
+#endif
+
+// -----------------------
+
+void main() 
+{
+    vec3 id = gl_GlobalInvocationID;
+    float x = id.x * Scale + RenderOffset.x;
+    float y = id.y * Scale + RenderOffset.y;
+    float z = id.z * Scale + RenderOffset.z;
+    
+#if TYPE == 0
+	vec2 texelCoord = gl_GlobalInvocationID.xz + RegionSampleOffset;
+    vec4 info = texture(RegionsSampler, vec3(texelCoord / RegionsTexSize, float(LodLevel)));
+    uint regionId = uint(info.r);
+    LayerGroup group = layerGroupings.data[regionId];
+    float fade = -5.0 * pow(1.0 - info.g, 10.0);
+#if FADE_NEAR_ORIGIN == 1
+    float len = distance(vec2(x, z), Origin.xz);
+	fade = min(fade, -5.0 * (1.0 - min(max(len - FadeStart, 0.0) / (FadeEnd - FadeStart), 1.0)));
+#endif
+#elif TYPE == 1
+	LayerGroup group = layerGroupings.data[0];
+	float len = distance(vec2(x, z), Origin.xz);
+	float fade = -5.0 * min(max(len - FadeStart, 0.0) / (FadeEnd - FadeStart), 1.0);
+#endif
+	fade += micLodSoften(group.Storminess); // Better Simple Clouds: per-cloud-type LOD softening (big vs small)
+	vec3 gradient = vec3(0.0);
+	float noise = getNoiseForLayerGroup(group, x, y, z, gradient) + fade;
+	float storminess = clamp(group.Storminess + fade * 0.1, 0.0, 1.0);
+	float brightness = clamp(1.0 - storminess * (1.0 - clamp((y - group.StormStart) / group.StormFadeDistance, 0.0, 1.0)), 0.0, 1.0);
+#if STYLE == 1
+	gradient = normalize(gradient);
+	float strength = dot(gradient, SHADE_DIRECTION) * 0.5 + 0.5;
+	brightness = clamp(brightness - strength * 0.1, 0.0, 1.0);
+#endif
+    if (noise > 0.0)
+    {
+    	createCube(x, y, z, Scale / 2.0, brightness, fade, group);
+    	// === Better Simple Clouds: fill the (otherwise hollow) interior while the camera is inside a cloud. Only solid
+    	// cells (noise > 0) are touched, so nothing ever appears outside the actual cloud. Within the view distance we
+    	// add translucent haze that thickens with distance; right at the view distance we switch to a SOLID opaque
+    	// shell so you genuinely cannot see past it (real geometry -> works under any shaderpack). Everything scales
+    	// with MicFillStrength (how deep inside the cloud the camera is) so it fades in/out as you enter and leave.
+    	// Only ever fill cells createCube left HOLLOW. A surface cell already has an opaque face at exactly this
+    	// position and radius, and adding the haze cube (or the shell) on top of it puts two surfaces at the same
+    	// depth: they are built from different meshes, so the depth test picks a different winner per pixel and per
+    	// frame and the seam shimmers - the "weird faces" pattern, visible wherever a cloud surface came within the
+    	// fill radius. See micHasOpaqueFace. Genuinely hollow cells emit no opaque geometry at all, so filling those
+    	// (which is what "fill the hollow interior" always meant) can never collide with anything.
+    	if (MicFillStrength > 0.0 && !micHasOpaqueFace(x, y, z, group, fade))
+    	{
+    		float micDist = distance(vec3(x, y, z), Origin);
+    		if (micDist < MicViewDist)
+    		{
+#if TRANSPARENCY == 1
+    			// Translucent haze at a CONSTANT per-cell density, so it accumulates into an exponential fog falloff:
+    			// lower MicHazeOpacity = see further, higher = murkier. View distance sets where the haze stops and the
+    			// shell sits, NOT how thick the haze is - the two are independent so each can be tuned on its own.
+    			float micA = MicFillStrength * MicHazeOpacity;
+    			if (micA > 0.003)
+    				createTransparentCube(x, y, z, Scale / 2.0, brightness, micA);
+#endif
+    		}
+    		else if (MicShell > 0.5 && micDist < MicViewDist + MIC_SHELL_CELLS)
+    		{
+    			// Optional opaque view-distance shell: a hard cut-off so you can't see across a huge cloud.
+    			createSolidCube(x, y, z, Scale / 2.0, brightness);
+    		}
+    	}
+    }
+#if TRANSPARENCY == 1
+    else if (group.TransparencyFade > 0.01 && noise > -group.TransparencyFade && noise < 0.0)
+    {
+   		float length = distance(vec2(x, z), Origin.xz);
+   		if (length < TransparencyDistance)
+   		{
+   			float alpha = 1.0 / group.TransparencyFade * (noise + group.TransparencyFade);
+    		createTransparentCube(x, y, z, Scale / 2.0, brightness, alpha);
+   		}
+    }
+#endif
+}

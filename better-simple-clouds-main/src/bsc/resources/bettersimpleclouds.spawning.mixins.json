@@ -1,0 +1,14 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "dev.bettersimpleclouds.spawning.mixin",
+    "plugin": "dev.bettersimpleclouds.spawning.SimpleCloudsSpawningMixinPlugin",
+    "compatibilityLevel": "JAVA_21",
+    "mixins": [
+        "CloudGeneratorBlacklistMixin",
+        "CloudSpawningConfigBlacklistMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}
