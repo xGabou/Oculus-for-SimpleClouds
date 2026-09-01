@@ -101,3 +101,33 @@ Observed/result:
 - `gradlew.bat compileJava` succeeded on NeoForge 1.21.1 on 2026-09-01.
 - Only the existing `BindingManagerBindingZeroMixin` metadata warnings were reported.
 - In-game cloud, water, and rain behavior remains to be validated in the affected shader-pack/world setup.
+
+## NeoForge 1.21.1 Fix Attempt: Register Pre-Tick Rain State Refresh
+
+Date: 2026-09-01
+
+New evidence:
+
+- The user reported that rain was not rendering on 1.21.1 after the earlier weather fixes.
+- The branch already contained a `SimpleCloudsRenderer.tick()` head injection intended to refresh localized `WorldEffects` state before rain geometry generation, but its containing mixin was absent from `oculus_for_simpleclouds.mixins.json`; none of its injections could run.
+- Inspection of the SimpleClouds 1.21.1 dependency bytecode confirmed that `SimpleCloudsRenderer.tick()` calls `WorldEffects.tick()` first. The pre-tick refresh therefore needs to execute at the renderer tick head to supply the regional rain level before precipitation quads are updated.
+- This is new evidence for the previously attempted weather-timing approach: the 1.21.1 implementation existed in source but was never registered at runtime.
+
+Patch:
+
+- Added and registered `SimpleCloudsRendererWeatherTickMixin`, a focused 1.21.1 mixin that invokes `WorldEffects.renderPost(...)` at the head of `SimpleCloudsRenderer.tick()` using the current camera position.
+- Kept this mixin limited to weather-state timing instead of registering the older multi-purpose `MixinSimpleCloudsRenderer`, which would also activate unrelated interior-cloud and lightning hooks.
+
+Why:
+
+- `WorldEffects.tick()` builds/updates the precipitation state using the current level rain value. Refreshing the SimpleClouds regional weather immediately beforehand prevents the rain input from remaining stale or zero when DH/Iris changes render callback timing.
+
+Expected behavior:
+
+- Rain precipitation geometry should be generated and rendered under rainy SimpleClouds regions on NeoForge 1.21.1.
+- The existing tail weather mixin should continue preserving rain/storm state when the vanilla-weather flag changes.
+
+Observed/result:
+
+- `gradlew.bat jar` succeeded on NeoForge 1.21.1 on 2026-09-01.
+- In-game rain behavior remains to be validated in the affected setup.

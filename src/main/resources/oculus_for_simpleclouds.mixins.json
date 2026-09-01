@@ -15,6 +15,7 @@
     "SimpleCloudsPipelineSelectMixin",
     "SimpleCloudsForcePipelineMixin",
     "SimpleCloudsWorldEffectsWeatherMixin",
+    "SimpleCloudsRendererWeatherTickMixin",
     "dh.SimpleCloudsDhForgeEventsMixin",
     "dh.SimpleCloudsBeforeDhRenderHandlerMixin",
     "dh.SimpleCloudsAfterDhEventGuardMixin",
