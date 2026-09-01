@@ -11,8 +11,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
-import net.Gabou.oculus_for_simpleclouds.auth.ClientLauncherGuards;
-import net.Gabou.oculus_for_simpleclouds.auth.ClientLauncherBlocker;
 import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareDhEventBridge;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
@@ -50,8 +48,6 @@ public class Oculus_for_simpleclouds {
     }
 
     private void clientInit(FMLClientSetupEvent event) {
-        ClientLauncherGuards.enforce();
-        ClientLauncherBlocker.install();
         MinecraftForge.EVENT_BUS.register(InteriorCloudClientEvents.class);
         if (ModList.get().isLoaded("distanthorizons")) {
             event.enqueueWork(ShaderAwareDhEventBridge::register);

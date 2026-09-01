@@ -1422,3 +1422,81 @@ Observed/result:
 
 - Build succeeded on 2026-05-27.
 - Copied to the CurseForge test instance for validation.
+
+## Diagnostic Audit: Black Cloud Faces And Intermittent Water/Depth Corruption
+
+Date: 2026-08-31
+
+New evidence:
+
+- User supplied two screenshots showing sparse, sharply rectangular near-black faces inside otherwise normally shaded clouds.
+- User also reported that water can intermittently render on top of everything in the scene/depth result.
+- The earlier empty-transparency-pass guard remains present, and transparent cloud rendering is still disabled by default under shaders. This makes the previously fixed `transparentVerts=0` path a less likely explanation for the newly reported water failure.
+- Storm fog was later re-enabled by default after it had previously been disabled during the terrain-translucency investigation. A controlled `-Dofsc.enableStormFogWithShaders=false` comparison is therefore relevant again, but only as a diagnostic alongside the newly identified GL state leaks.
+
+Source audit findings (no rendering fix applied yet):
+
+- `FinalCloudCompositeHandler.compositeClouds()` binds raw `GL_TEXTURE_2D` textures on units 0 through 14, but restores only the active texture selector and unbinds unit 0. Units 1 through 14 retain OFSC cloud/depth textures.
+- Those binds use raw LWJGL calls rather than Minecraft's `GlStateManager` texture-binding API. The real OpenGL bindings can therefore diverge from Minecraft/Oculus's cached binding state. A later water/translucent pass may skip a bind it believes is already current and sample an OFSC color/depth texture instead.
+- The DH depth merge helpers similarly replace the current program/VAO and texture-unit bindings with `0`/OFSC objects instead of restoring the exact prior values. They also restore the color mask to all-true rather than to the previous mask.
+- The fullscreen passes do not consistently save/disable/restore scissor, stencil, culling, front-face, blend equation, or per-target state. `ShaderAwareDhPipeline.GlStateGuard` already contains some of this logic but is currently unused.
+- Both shader-aware pipelines temporarily attach the cloud depth texture to the main framebuffer for lightning even on frames where no lightning is present. The attachment itself is restored in a `finally`, but the lightning helper unconditionally enables depth/blend state and finishes with blending disabled rather than restoring the exact incoming state.
+- In normal mode the final shader already discards every cloud fragment for which scene depth is non-sky, and depth writes are disabled. Temporarily replacing the main framebuffer depth attachment with the captured scene-depth texture is therefore likely redundant for the working scene-mask composite and remains a high-risk mutation point.
+- `FinalCloudCompositeOpaqueInsideMixin.java` is not registered in `oculus_for_simpleclouds.mixins.json`, so its intended behavior is dead code. If registered unchanged, its return injection would itself overwrite the blend factors that `compositeClouds()` just restored.
+
+Black-face interpretation:
+
+- The local `cube_mesh.comp` is text-identical to the SimpleClouds 0.7.4 dependency, so the sparse dark faces are not explained by a local compute-mesh modification.
+- The opaque vertex shader maps `info.brightness == 0` to `DarknessColorModifier`, whose configured default is `(0.0, 0.0, 0.15)`.
+- The opaque fragment shader then writes that RGB with alpha `1.0`, and the OFSC fullscreen composite faithfully composites it. This can produce the observed nearly black, cube-face-shaped marks in dark/storm cloud cells; dither discard would expose the sky rather than produce opaque black.
+- This is still a hypothesis until the cloud color target is inspected at an affected pixel. The existing `renderdoc.cap` is only a RenderDoc launch-settings file (900 bytes), not an actual frame capture.
+
+Recommended next diagnostics before changing behavior:
+
+- Capture a bad frame and inspect the cloud color target immediately before the OFSC fullscreen draw. If the black face is already present there, visualize `info.brightness` and finite/NaN status in the cloud shader. If it first appears during the fullscreen draw, inspect composite color/alpha and texture bindings.
+- Snapshot all texture-unit bindings and core GL state before/after the OFSC pass, then restore exact prior state in a narrowly scoped guard.
+- Compare one session with `-Dofsc.enableStormFogWithShaders=false`. If the water failure persists, prioritize the raw texture-binding/state leak. If it stops, isolate and guard the storm-fog blit state rather than permanently removing weather effects.
+
+Observed/result:
+
+- Source audit completed; no rendering behavior was changed in this attempt.
+- `gradlew.bat compileJava --warning-mode all` succeeded on 2026-08-31.
+
+## Fix Attempt: Exact GL State Restoration And Safe Cloud Lighting
+
+Date: 2026-08-31
+
+New evidence:
+
+- The preceding audit identified concrete, un-restored OpenGL state in the final cloud composite and DH depth-copy/merge passes: texture bindings on units 1 through 14, framebuffer bindings, program/VAO/buffer bindings, viewport/scissor state, blend state, depth state, culling, stencil, and color masks.
+- The final composite shader already performs scene-depth occlusion and writes no depth, so replacing the main framebuffer's depth attachment for that pass was unnecessary.
+- The sparse black artifacts match opaque cube faces and can be produced by zero/invalid per-face brightness or an invalid normalization result reaching the opaque cloud output.
+
+Patch:
+
+- Added `GlStateSnapshot`, which captures and restores exact raw OpenGL state, including every texture unit used by a fullscreen OFSC pass.
+- Converted the final cloud composite, scene-depth copies, DH depth merges, depth-combine target setup, and their shader-program initialization to use the exact state snapshot.
+- Removed the final composite's temporary replacement of the main framebuffer depth attachment. The pass now relies on its scene-depth mask with depth testing and depth writes disabled.
+- Restored incoming depth, blend, and cull state after both shader-aware cloud pipelines.
+- Limited the lightning depth-attachment swap to frames that actually contain lightning, and made its blend/depth/fog restoration exact.
+- Hardened `clouds.vsh` and `clouds.fsh`: unsafe normalizations are replaced with finite fallbacks, face indices and brightness are sanitized, zero brightness receives a small visible floor, and the darkness color receives a low neutral floor instead of allowing an opaque near-black face.
+
+Why:
+
+- Exact state restoration prevents Oculus/Minecraft's cached bindings from disagreeing with the real OpenGL bindings. That disagreement could make a later water/translucency pass sample an OFSC cloud or depth texture and render water over unrelated geometry.
+- Avoiding unnecessary depth-attachment mutation reduces the chance of corrupting the framebuffer used by subsequent shader-pack passes.
+- Sanitizing cloud lighting targets the block-shaped black artifacts without removing dark/storm cloud shading entirely.
+
+Expected behavior:
+
+- Water and other translucent geometry should retain the shader pack's intended depth and texture inputs after the OFSC composite.
+- Sparse opaque black cloud faces should be replaced by consistently dark, still-visible storm-cloud shading.
+- Frames without lightning should not mutate the main framebuffer's depth attachment for the lightning path.
+
+Observed/result:
+
+- The initial compilation exposed two implementation mistakes in the new restoration code (`glBlendEquationSeparate` was called from the wrong LWJGL class, followed by a missing `GL14` import). Both were corrected rather than treated as runtime results.
+- `gradlew.bat compileJava` succeeded on 2026-08-31.
+- `gradlew.bat jar` succeeded and produced `build/libs/oculus_for_simpleclouds-1.1.2.jar`.
+- `glslangValidator` is not installed in this environment, so the GLSL changes could not be validated with that standalone compiler. They are included in the successful resource/package build.
+- In-game behavior has not yet been observed; the artifact and water fixes require validation in the affected shader-pack/world setup.

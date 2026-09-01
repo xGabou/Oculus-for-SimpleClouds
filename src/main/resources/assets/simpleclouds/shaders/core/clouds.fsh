@@ -55,6 +55,14 @@ float luminance(vec3 color)
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+vec3 safeNormalize(vec3 value, vec3 fallback)
+{
+    float lengthSquared = dot(value, value);
+    if (!(lengthSquared > 1.0E-8) || isnan(lengthSquared) || isinf(lengthSquared))
+        return fallback;
+    return value * inversesqrt(lengthSquared);
+}
+
 float hash12(vec2 p)
 {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -93,9 +101,9 @@ void main()
     vec3 baseColor = vertexColor.rgb * ColorModulator.rgb;
     vec3 litColor = baseColor;
 
-    vec3 normal = normalize(faceNormal);
-    vec3 sunDir = normalize(Light0_Direction);
-    vec3 viewDir = normalize(-viewSpacePos);
+    vec3 normal = safeNormalize(faceNormal, vec3(0.0, 1.0, 0.0));
+    vec3 sunDir = safeNormalize(Light0_Direction, vec3(0.0, 1.0, 0.0));
+    vec3 viewDir = safeNormalize(-viewSpacePos, vec3(0.0, 0.0, 1.0));
 
     float nearFactor = 1.0 - smoothstep(FogStart, FogEnd, fogDistance);
     float warmStrength = smooth01(SunWarmth) * nearFactor;
@@ -157,6 +165,10 @@ void main()
     }
 
     litColor = mix(baseColor, baseColor * warmTint * OPAQUE_WARM_TINT_BOOST, warmAmount);
+
+    if (any(isnan(litColor)) || any(isinf(litColor)))
+        litColor = max(baseColor, vec3(0.08, 0.09, 0.12));
+    litColor = max(litColor, vec3(0.0));
 
     vec4 color = vec4(litColor, vertexColor.a);
     color = mix(color, FogColor, smoothstep(FogStart, FogEnd, fogDistance));

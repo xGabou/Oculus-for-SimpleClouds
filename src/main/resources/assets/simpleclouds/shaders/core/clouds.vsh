@@ -23,6 +23,9 @@ out vec3 viewSpacePos;
 out vec3 cloudLocalPos;
 flat out vec3 faceNormal;
 
+const float MIN_VISIBLE_BRIGHTNESS = 0.07;
+const vec3 MIN_DARKNESS_COLOR = vec3(0.055, 0.065, 0.090);
+
 float saturate(float value)
 {
     return clamp(value, 0.0, 1.0);
@@ -39,10 +42,18 @@ float luminance(vec3 color)
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
+vec3 safeNormalize(vec3 value, vec3 fallback)
+{
+    float lengthSquared = dot(value, value);
+    if (!(lengthSquared > 1.0E-8) || isnan(lengthSquared) || isinf(lengthSquared))
+        return fallback;
+    return value * inversesqrt(lengthSquared);
+}
+
 vec4 mixLight(vec3 lightDir0, vec3 lightDir1, vec3 normal, vec4 color, float fogDistance)
 {
-    lightDir0 = normalize(lightDir0);
-    lightDir1 = normalize(lightDir1);
+    lightDir0 = safeNormalize(lightDir0, vec3(0.0, 1.0, 0.0));
+    lightDir1 = safeNormalize(lightDir1, vec3(0.0, -1.0, 0.0));
 
     float sunDot = dot(lightDir0, normal);
     float sunFacing = max(0.0, sunDot);
@@ -70,7 +81,14 @@ void main()
 {
     SideInfo info = sides.data[gl_InstanceID];
 
-    vec4 transformedPos = vec4(Position, 1.0) * transformations[uint(info.side)];
+    int sideIndexInt = clamp(info.side, 0, 5);
+    uint sideIndex = uint(sideIndexInt);
+    float safeBrightness = info.brightness;
+    if (isnan(safeBrightness) || isinf(safeBrightness))
+        safeBrightness = 1.0;
+    safeBrightness = mix(MIN_VISIBLE_BRIGHTNESS, 1.0, clamp(safeBrightness, 0.0, 1.0));
+
+    vec4 transformedPos = vec4(Position, 1.0) * transformations[sideIndex];
     vec3 sideOffset = vec3(info.x, info.y, info.z);
     vec4 finalPos = vec4(transformedPos.xyz * info.radius + sideOffset, 1.0);
     vec4 modelPos = ModelViewMat * finalPos;
@@ -79,9 +97,10 @@ void main()
     fogDistance = length(modelPos.xz);
     viewSpacePos = modelPos.xyz;
     cloudLocalPos = finalPos.xyz;
-    faceNormal = normals[uint(info.side)];
+    faceNormal = normals[sideIndex];
 
-    vec4 finalCol = vec4(mix(DarknessColorModifier, vec3(1.0), info.brightness), 1.0);
+    vec3 safeDarknessColor = max(DarknessColorModifier, MIN_DARKNESS_COLOR);
+    vec4 finalCol = vec4(mix(safeDarknessColor, vec3(1.0), safeBrightness), 1.0);
     if (UseNormals)
     {
         vertexColor = mixLight(Light0_Direction, Light1_Direction, faceNormal, finalCol, fogDistance);
