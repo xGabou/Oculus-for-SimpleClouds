@@ -66,3 +66,38 @@ Expected behavior:
 
 - DH and non-DH rendering should no longer crash when the lightning buffer is empty.
 - If no lightning geometry is actually produced for a frame, the renderer should skip the draw cleanly.
+
+## NeoForge 1.21.1 Port: Exact GL State Restoration And Safe Cloud Lighting
+
+Date: 2026-09-01
+
+New evidence:
+
+- The Forge 1.20.1 fix in commit `23a5d4a` identified raw OpenGL state leaks in the final cloud composite, scene-depth copies, DH depth merges, and lightning rendering.
+- Those same passes and partial restoration patterns were present on the NeoForge 1.21.1 branch, so later translucent/weather rendering could inherit OFSC texture, framebuffer, blend, depth, cull, or mask state.
+- SimpleClouds 1.21.1 uses a simpler stock `clouds.vsh`/`clouds.fsh` interface than the customized 1.20.1 branch. Copying the complete 1.20.1 shaders would introduce uniforms and varyings that are not part of the 1.21.1 contract.
+
+Patch:
+
+- Ported `GlStateSnapshot` and converted the 1.21.1 final composite, depth-copy, DH depth-merge/combine, and related setup passes to restore exact incoming OpenGL state and all texture units they use.
+- Removed the unnecessary final-composite main-depth attachment replacement and restricted the lightning depth swap to frames that actually contain lightning.
+- Preserved the 1.21.1 `Tesselator.begin(...)`/nullable `MeshData` API and its existing empty-lightning guard while adding exact lightning blend/depth/fog restoration.
+- Removed the client launcher enforcement classes and calls, matching the source commit's behavior, and bumped the NeoForge mod version to `1.1.3`.
+- Ported only the defensive lighting changes onto the actual SimpleClouds 1.21.1 stock shader interface: finite normalization, clamped face indices/brightness, a small darkness floor, and non-finite color fallback.
+
+Why:
+
+- Exact state restoration prevents the cloud pass from corrupting water, rain, and other later translucent rendering under Iris/NeoForge.
+- Basing the shader override on the 1.21.1 dependency preserves its expected uniforms and vertex/fragment interface while addressing the black cloud-face artifact.
+
+Expected behavior:
+
+- Water and weather passes should receive the texture/depth/blend state that was active before OFSC rendering.
+- Sparse opaque black cloud faces should remain visibly dark instead of becoming black or non-finite.
+- Frames without lightning should not replace the main framebuffer's depth attachment.
+
+Observed/result:
+
+- `gradlew.bat compileJava` succeeded on NeoForge 1.21.1 on 2026-09-01.
+- Only the existing `BindingManagerBindingZeroMixin` metadata warnings were reported.
+- In-game cloud, water, and rain behavior remains to be validated in the affected shader-pack/world setup.

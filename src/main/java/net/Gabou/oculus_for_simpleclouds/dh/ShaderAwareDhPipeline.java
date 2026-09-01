@@ -16,6 +16,7 @@ import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler.DepthSource;
+import net.Gabou.oculus_for_simpleclouds.client.GlStateSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -25,7 +26,6 @@ import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 
-import java.nio.IntBuffer;
 
 /**
  * Shader-aware replica of {@link DhSupportPipeline}
@@ -228,6 +228,8 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         ProfilerFiller p = mc.getProfiler();
         p.push("clouds");
         boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean cullEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
         int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -254,11 +256,11 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         }
         p.pop();
         stack.popPose();
-        if (!depthEnabled) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        GL11.glDepthFunc(prevDepthFunc);
-        GL11.glDepthMask(prevDepthMask);
+        if (depthEnabled) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
+        if (blendEnabled) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+        if (cullEnabled) RenderSystem.enableCull(); else RenderSystem.disableCull();
+        RenderSystem.depthFunc(prevDepthFunc);
+        RenderSystem.depthMask(prevDepthMask);
         p.push("cloud_shadows");
         renderer.doCloudShadowProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudTarget.getDepthTextureId());
         p.pop();
@@ -283,32 +285,30 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             warnedStormFogSkipped = true;
         }
 
-        mc.getMainRenderTarget().bindWrite(false);
-        int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-        try {
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
-            RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
-
-            stack.pushPose();
-            stack.translate(-camX, -camY, -camZ);
-            ShaderAwareDhPipeline.renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
-            stack.popPose();
-
-            if (DEBUG_BLIT_CLOUD_TARGET) {
-                debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+        if (renderer.getWorldEffectsManager().hasLightningToRender()) {
+            try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
                 mc.getMainRenderTarget().bindWrite(false);
-                cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
-                // Also blit to default framebuffer to bypass any custom main target
-                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
-                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
-                GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+                int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                try {
+                    GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
+                    RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
+                    stack.pushPose();
+                    stack.translate(-camX, -camY, -camZ);
+                    ShaderAwareDhPipeline.renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
+                    stack.popPose();
+                } finally {
+                    RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
+                    mc.getMainRenderTarget().bindWrite(false);
+                    restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
+                }
             }
-        } finally {
-            RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
+        }
+
+        if (DEBUG_BLIT_CLOUD_TARGET) {
+            debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
             mc.getMainRenderTarget().bindWrite(false);
-            restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
+            cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
         }
     }
 
@@ -331,11 +331,17 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
 
     private static void renderLightning(WorldEffects effects, SimpleCloudsRenderer renderer, Minecraft mc, PoseStack stack, float partialTick, double camX, double camY, double camZ) {
         Tesselator tesselator = Tesselator.getInstance();
-        RenderSystem.enableBlend();
-        RenderSystem.enableDepthTest();
-        if (effects.hasLightningToRender()) {
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int blendSrcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB);
+        int blendDstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB);
+        int blendSrcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA);
+        int blendDstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA);
+        float cachedFogStart = RenderSystem.getShaderFogStart();
+        try {
+            RenderSystem.enableBlend();
+            RenderSystem.enableDepthTest();
             markLightningRendered();
-            float cachedFogStart = RenderSystem.getShaderFogStart();
             RenderSystem.setShaderFogStart(Float.MAX_VALUE);
             BufferBuilder builder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
             RenderSystem.setShader(GameRenderer::getRendertypeLightningShader);
@@ -351,10 +357,12 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             if (meshData != null) {
                 BufferUploader.drawWithShader(meshData);
             }
+        } finally {
             RenderSystem.setShaderFogStart(cachedFogStart);
-            RenderSystem.defaultBlendFunc();
+            RenderSystem.blendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha);
+            if (blendEnabled) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+            if (depthEnabled) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
         }
-        RenderSystem.disableBlend();
     }
 
     public static boolean shouldRenderWeatherLightningFallback() {
@@ -388,100 +396,82 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             return false;
         }
 
-        GlStateManager._getError(); // clear previous errors
-        int previousFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
-        IntBuffer viewport = BufferUtils.createIntBuffer(4);
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        int previousDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-        boolean previousDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         boolean reverseDepth = detectReverseDepth();
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
-        GL11.glViewport(0, 0, cloudTarget.width, cloudTarget.height);
-        GL11.glDisable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(true);
-        GL11.glDepthFunc(reverseDepth ? GL11.GL_GEQUAL : GL11.GL_LEQUAL);
-        GL11.glColorMask(false, false, false, false);
-
-        GL20.glUseProgram(depthMergeProgram);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, dhDepthSource.getDepthTexture());
-        if (depthMergeSamplerLoc >= 0) {
-            GL20.glUniform1i(depthMergeSamplerLoc, 0);
-        }
-
-        GL30.glBindVertexArray(depthMergeVao);
-        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
-        GL30.glBindVertexArray(0);
-
-        GL20.glUseProgram(0);
-        GL11.glColorMask(true, true, true, true);
-        GL11.glDepthFunc(previousDepthFunc);
-        GL11.glDepthMask(previousDepthMask);
-        if (!depthEnabled) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        if (blendEnabled) {
-            GL11.glEnable(GL11.GL_BLEND);
-        } else {
+        GlStateManager._getError(); // clear previous errors
+        boolean succeeded;
+        try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
+            state.prepareFullscreen();
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
+            GL11.glViewport(0, 0, cloudTarget.width, cloudTarget.height);
             GL11.glDisable(GL11.GL_BLEND);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(true);
+            GL11.glDepthFunc(reverseDepth ? GL11.GL_GEQUAL : GL11.GL_LEQUAL);
+            GL11.glColorMask(false, false, false, false);
+
+            GL20.glUseProgram(depthMergeProgram);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, dhDepthSource.getDepthTexture());
+            if (depthMergeSamplerLoc >= 0) {
+                GL20.glUniform1i(depthMergeSamplerLoc, 0);
+            }
+
+            GL30.glBindVertexArray(depthMergeVao);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+            succeeded = GlStateManager._getError() == GL11.GL_NO_ERROR;
         }
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFbo);
-        GL11.glViewport(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
-        return GlStateManager._getError() == GL11.GL_NO_ERROR;
+        return succeeded;
     }
 
     private static boolean ensureDepthMergeProgram() {
         if (depthMergeProgram != -1 && depthMergeVao != -1 && depthMergeVbo != -1) {
             return true;
         }
-        String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
-        String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uDepth;void main(){float d=texture(uDepth,vUv).r;gl_FragDepth=d;}";
-        int vert = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
-        GL20.glShaderSource(vert, vertexSrc);
-        GL20.glCompileShader(vert);
-        if (GL20.glGetShaderi(vert, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth merge vertex shader compile failed: " + GL20.glGetShaderInfoLog(vert));
-            GL20.glDeleteShader(vert);
-            return false;
-        }
-        int frag = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
-        GL20.glShaderSource(frag, fragmentSrc);
-        GL20.glCompileShader(frag);
-        if (GL20.glGetShaderi(frag, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth merge fragment shader compile failed: " + GL20.glGetShaderInfoLog(frag));
+        try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
+            String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
+            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uDepth;void main(){float d=texture(uDepth,vUv).r;gl_FragDepth=d;}";
+            int vert = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
+            GL20.glShaderSource(vert, vertexSrc);
+            GL20.glCompileShader(vert);
+            if (GL20.glGetShaderi(vert, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth merge vertex shader compile failed: " + GL20.glGetShaderInfoLog(vert));
+                GL20.glDeleteShader(vert);
+                return false;
+            }
+            int frag = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
+            GL20.glShaderSource(frag, fragmentSrc);
+            GL20.glCompileShader(frag);
+            if (GL20.glGetShaderi(frag, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth merge fragment shader compile failed: " + GL20.glGetShaderInfoLog(frag));
+                GL20.glDeleteShader(vert);
+                GL20.glDeleteShader(frag);
+                return false;
+            }
+
+            depthMergeProgram = GL20.glCreateProgram();
+            GL20.glAttachShader(depthMergeProgram, vert);
+            GL20.glAttachShader(depthMergeProgram, frag);
+            GL20.glLinkProgram(depthMergeProgram);
             GL20.glDeleteShader(vert);
             GL20.glDeleteShader(frag);
-            return false;
-        }
+            if (GL20.glGetProgrami(depthMergeProgram, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth merge program link failed: " + GL20.glGetProgramInfoLog(depthMergeProgram));
+                GL20.glDeleteProgram(depthMergeProgram);
+                depthMergeProgram = -1;
+                return false;
+            }
 
-        depthMergeProgram = GL20.glCreateProgram();
-        GL20.glAttachShader(depthMergeProgram, vert);
-        GL20.glAttachShader(depthMergeProgram, frag);
-        GL20.glLinkProgram(depthMergeProgram);
-        GL20.glDeleteShader(vert);
-        GL20.glDeleteShader(frag);
-        if (GL20.glGetProgrami(depthMergeProgram, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth merge program link failed: " + GL20.glGetProgramInfoLog(depthMergeProgram));
-            GL20.glDeleteProgram(depthMergeProgram);
-            depthMergeProgram = -1;
-            return false;
+            depthMergeSamplerLoc = GL20.glGetUniformLocation(depthMergeProgram, "uDepth");
+            depthMergeVao = GL30.glGenVertexArrays();
+            depthMergeVbo = GL15.glGenBuffers();
+            GL30.glBindVertexArray(depthMergeVao);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, depthMergeVbo);
+            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, new float[]{-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f}, GL15.GL_STATIC_DRAW);
+            int posLoc = GL20.glGetAttribLocation(depthMergeProgram, "aPos");
+            GL20.glEnableVertexAttribArray(posLoc);
+            GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
+            return true;
         }
-
-        depthMergeSamplerLoc = GL20.glGetUniformLocation(depthMergeProgram, "uDepth");
-        depthMergeVao = GL30.glGenVertexArrays();
-        depthMergeVbo = GL15.glGenBuffers();
-        GL30.glBindVertexArray(depthMergeVao);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, depthMergeVbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, new float[]{-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f}, GL15.GL_STATIC_DRAW);
-        int posLoc = GL20.glGetAttribLocation(depthMergeProgram, "aPos");
-        GL20.glEnableVertexAttribArray(posLoc);
-        GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
-        GL30.glBindVertexArray(0);
-        return true;
     }
 
     private static int depthMergeProgram = -1;
@@ -501,55 +491,34 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             return -1;
         }
 
-        int previousFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
-        IntBuffer viewport = BufferUtils.createIntBuffer(4);
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
-        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-        boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
-        GL11.glViewport(0, 0, w, h);
-        GL11.glDisable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(true);
-        GL11.glDepthFunc(GL11.GL_ALWAYS);
-        GL11.glColorMask(false, false, false, false);
-
-        GL20.glUseProgram(depthCombineProgram);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, dhDepthTex);
-        if (depthCombineDhSamplerLoc >= 0) {
-            GL20.glUniform1i(depthCombineDhSamplerLoc, 0);
-        }
-        GL13.glActiveTexture(GL13.GL_TEXTURE1);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, baseDepthTex);
-        if (depthCombineBaseSamplerLoc >= 0) {
-            GL20.glUniform1i(depthCombineBaseSamplerLoc, 1);
-        }
-        if (depthCombineReverseLoc >= 0) {
-            GL20.glUniform1i(depthCombineReverseLoc, reverseDepth ? 1 : 0);
-        }
-
-        GL30.glBindVertexArray(depthCombineVao);
-        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
-        GL30.glBindVertexArray(0);
-
-        GL20.glUseProgram(0);
-        GL11.glColorMask(true, true, true, true);
-        GL11.glDepthFunc(prevDepthFunc);
-        GL11.glDepthMask(prevDepthMask);
-        if (!depthEnabled) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        if (blendEnabled) {
-            GL11.glEnable(GL11.GL_BLEND);
-        } else {
+        try (GlStateSnapshot state = GlStateSnapshot.capture(1)) {
+            state.prepareFullscreen();
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
+            GL11.glViewport(0, 0, w, h);
             GL11.glDisable(GL11.GL_BLEND);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(true);
+            GL11.glDepthFunc(GL11.GL_ALWAYS);
+            GL11.glColorMask(false, false, false, false);
+
+            GL20.glUseProgram(depthCombineProgram);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, dhDepthTex);
+            if (depthCombineDhSamplerLoc >= 0) {
+                GL20.glUniform1i(depthCombineDhSamplerLoc, 0);
+            }
+            GL13.glActiveTexture(GL13.GL_TEXTURE1);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, baseDepthTex);
+            if (depthCombineBaseSamplerLoc >= 0) {
+                GL20.glUniform1i(depthCombineBaseSamplerLoc, 1);
+            }
+            if (depthCombineReverseLoc >= 0) {
+                GL20.glUniform1i(depthCombineReverseLoc, reverseDepth ? 1 : 0);
+            }
+
+            GL30.glBindVertexArray(depthCombineVao);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
         }
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFbo);
-        GL11.glViewport(viewport.get(0), viewport.get(1), viewport.get(2), viewport.get(3));
         return combinedDepthTex;
     }
 
@@ -557,78 +526,79 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
         if (depthCombineProgram != -1 && depthCombineVao != -1 && depthCombineVbo != -1) {
             return true;
         }
-        String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
-        String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uDhDepth;uniform sampler2D uBaseDepth;uniform int uReverse;void main(){float dh=texture(uDhDepth,vUv).r;float base=texture(uBaseDepth,vUv).r;float merged=uReverse==1?max(dh,base):min(dh,base);gl_FragDepth=merged;}";
-        int vert = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
-        GL20.glShaderSource(vert, vertexSrc);
-        GL20.glCompileShader(vert);
-        if (GL20.glGetShaderi(vert, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth combine vertex shader compile failed: " + GL20.glGetShaderInfoLog(vert));
-            GL20.glDeleteShader(vert);
-            return false;
-        }
-        int frag = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
-        GL20.glShaderSource(frag, fragmentSrc);
-        GL20.glCompileShader(frag);
-        if (GL20.glGetShaderi(frag, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth combine fragment shader compile failed: " + GL20.glGetShaderInfoLog(frag));
+        try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
+            String vertexSrc = "#version 150\nin vec2 aPos;out vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}";
+            String fragmentSrc = "#version 150\nin vec2 vUv;uniform sampler2D uDhDepth;uniform sampler2D uBaseDepth;uniform int uReverse;void main(){float dh=texture(uDhDepth,vUv).r;float base=texture(uBaseDepth,vUv).r;float merged=uReverse==1?max(dh,base):min(dh,base);gl_FragDepth=merged;}";
+            int vert = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
+            GL20.glShaderSource(vert, vertexSrc);
+            GL20.glCompileShader(vert);
+            if (GL20.glGetShaderi(vert, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth combine vertex shader compile failed: " + GL20.glGetShaderInfoLog(vert));
+                GL20.glDeleteShader(vert);
+                return false;
+            }
+            int frag = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
+            GL20.glShaderSource(frag, fragmentSrc);
+            GL20.glCompileShader(frag);
+            if (GL20.glGetShaderi(frag, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth combine fragment shader compile failed: " + GL20.glGetShaderInfoLog(frag));
+                GL20.glDeleteShader(vert);
+                GL20.glDeleteShader(frag);
+                return false;
+            }
+
+            depthCombineProgram = GL20.glCreateProgram();
+            GL20.glAttachShader(depthCombineProgram, vert);
+            GL20.glAttachShader(depthCombineProgram, frag);
+            GL20.glLinkProgram(depthCombineProgram);
             GL20.glDeleteShader(vert);
             GL20.glDeleteShader(frag);
-            return false;
-        }
+            if (GL20.glGetProgrami(depthCombineProgram, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
+                System.out.println("[OFSC WARN] Depth combine program link failed: " + GL20.glGetProgramInfoLog(depthCombineProgram));
+                GL20.glDeleteProgram(depthCombineProgram);
+                depthCombineProgram = -1;
+                return false;
+            }
 
-        depthCombineProgram = GL20.glCreateProgram();
-        GL20.glAttachShader(depthCombineProgram, vert);
-        GL20.glAttachShader(depthCombineProgram, frag);
-        GL20.glLinkProgram(depthCombineProgram);
-        GL20.glDeleteShader(vert);
-        GL20.glDeleteShader(frag);
-        if (GL20.glGetProgrami(depthCombineProgram, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
-            System.out.println("[OFSC WARN] Depth combine program link failed: " + GL20.glGetProgramInfoLog(depthCombineProgram));
-            GL20.glDeleteProgram(depthCombineProgram);
-            depthCombineProgram = -1;
-            return false;
+            depthCombineDhSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uDhDepth");
+            depthCombineBaseSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uBaseDepth");
+            depthCombineReverseLoc = GL20.glGetUniformLocation(depthCombineProgram, "uReverse");
+            depthCombineVao = GL30.glGenVertexArrays();
+            depthCombineVbo = GL15.glGenBuffers();
+            GL30.glBindVertexArray(depthCombineVao);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, depthCombineVbo);
+            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, new float[]{-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f}, GL15.GL_STATIC_DRAW);
+            int posLoc = GL20.glGetAttribLocation(depthCombineProgram, "aPos");
+            GL20.glEnableVertexAttribArray(posLoc);
+            GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
+            return true;
         }
-
-        depthCombineDhSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uDhDepth");
-        depthCombineBaseSamplerLoc = GL20.glGetUniformLocation(depthCombineProgram, "uBaseDepth");
-        depthCombineReverseLoc = GL20.glGetUniformLocation(depthCombineProgram, "uReverse");
-        depthCombineVao = GL30.glGenVertexArrays();
-        depthCombineVbo = GL15.glGenBuffers();
-        GL30.glBindVertexArray(depthCombineVao);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, depthCombineVbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, new float[]{-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f}, GL15.GL_STATIC_DRAW);
-        int posLoc = GL20.glGetAttribLocation(depthCombineProgram, "aPos");
-        GL20.glEnableVertexAttribArray(posLoc);
-        GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
-        GL30.glBindVertexArray(0);
-        return true;
     }
 
     private static boolean ensureCombinedDepthTarget(int w, int h) {
-        if (combinedDepthTex == -1) {
-            combinedDepthTex = GL11.glGenTextures();
+        try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
+            if (combinedDepthTex == -1) {
+                combinedDepthTex = GL11.glGenTextures();
+            }
+            if (combinedDepthFbo == -1) {
+                combinedDepthFbo = GL30.glGenFramebuffers();
+            }
+            if (w != combinedDepthW || h != combinedDepthH) {
+                combinedDepthW = w;
+                combinedDepthH = h;
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, combinedDepthTex);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F, w, h, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
+            }
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, combinedDepthTex, 0);
+            GL11.glDrawBuffer(GL11.GL_NONE);
+            GL11.glReadBuffer(GL11.GL_NONE);
+            return GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE;
         }
-        if (combinedDepthFbo == -1) {
-            combinedDepthFbo = GL30.glGenFramebuffers();
-        }
-        if (w != combinedDepthW || h != combinedDepthH) {
-            combinedDepthW = w;
-            combinedDepthH = h;
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, combinedDepthTex);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_DEPTH_COMPONENT32F, w, h, 0, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
-        }
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, combinedDepthFbo);
-        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, combinedDepthTex, 0);
-        GL11.glDrawBuffer(GL11.GL_NONE);
-        GL11.glReadBuffer(GL11.GL_NONE);
-        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
-        return status == GL30.GL_FRAMEBUFFER_COMPLETE;
     }
 
     private static void debug(String msg) {
@@ -642,74 +612,4 @@ public class ShaderAwareDhPipeline implements CloudsRenderPipeline, ShaderAwareD
             lastDebugMs = now;
         }
     }
-
-
-    private static final class GlStateGuard {
-        final boolean scissorEnabled;
-        final int scX, scY, scW, scH;
-
-        final boolean stencilEnabled;
-
-        final boolean cullEnabled;
-        final int cullMode;
-        final int frontFace;
-
-        private GlStateGuard(
-                boolean scissorEnabled, int scX, int scY, int scW, int scH,
-                boolean stencilEnabled,
-                boolean cullEnabled, int cullMode, int frontFace
-        ) {
-            this.scissorEnabled = scissorEnabled;
-            this.scX = scX;
-            this.scY = scY;
-            this.scW = scW;
-            this.scH = scH;
-            this.stencilEnabled = stencilEnabled;
-            this.cullEnabled = cullEnabled;
-            this.cullMode = cullMode;
-            this.frontFace = frontFace;
-        }
-
-        static GlStateGuard captureAndDisableForFullscreen() {
-            boolean scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-            IntBuffer sb = BufferUtils.createIntBuffer(4);
-            GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, sb);
-
-            boolean stencil = GL11.glIsEnabled(GL11.GL_STENCIL_TEST);
-
-            boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-            int cullMode = GL11.glGetInteger(GL11.GL_CULL_FACE_MODE);
-            int frontFace = GL11.glGetInteger(GL11.GL_FRONT_FACE);
-
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            GL11.glDisable(GL11.GL_STENCIL_TEST);
-            GL11.glDisable(GL11.GL_CULL_FACE);
-
-            return new GlStateGuard(scissor, sb.get(0), sb.get(1), sb.get(2), sb.get(3), stencil, cull, cullMode, frontFace);
-        }
-
-        void restore() {
-            if (cullEnabled) {
-                GL11.glEnable(GL11.GL_CULL_FACE);
-                GL11.glCullFace(cullMode);
-                GL11.glFrontFace(frontFace);
-            } else {
-                GL11.glDisable(GL11.GL_CULL_FACE);
-            }
-
-            if (stencilEnabled) {
-                GL11.glEnable(GL11.GL_STENCIL_TEST);
-            } else {
-                GL11.glDisable(GL11.GL_STENCIL_TEST);
-            }
-
-            if (scissorEnabled) {
-                GL11.glEnable(GL11.GL_SCISSOR_TEST);
-                GL11.glScissor(scX, scY, scW, scH);
-            } else {
-                GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            }
-        }
-    }
-
 }

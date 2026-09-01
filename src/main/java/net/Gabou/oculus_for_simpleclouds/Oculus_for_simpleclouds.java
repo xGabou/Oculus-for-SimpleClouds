@@ -1,8 +1,6 @@
 package net.Gabou.oculus_for_simpleclouds;
 
 import com.mojang.logging.LogUtils;
-import net.Gabou.oculus_for_simpleclouds.auth.ClientLauncherBlocker;
-import net.Gabou.oculus_for_simpleclouds.auth.ClientLauncherGuards;
 import net.Gabou.oculus_for_simpleclouds.client.ClientResourceReloadHandler;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.Gabou.oculus_for_simpleclouds.dh.ShaderAwareDhEventBridge;
@@ -33,12 +31,8 @@ public class Oculus_for_simpleclouds {
     }
 
     private void clientInit(FMLClientSetupEvent event) {
-        ClientLauncherGuards.enforce();
-        ClientLauncherBlocker.install();
-
         NeoForge.EVENT_BUS.addListener(FinalCloudCompositeHandler::onRenderStage);
         NeoForge.EVENT_BUS.register(InteriorCloudClientEvents.class);
-
         if (ModList.get().isLoaded("distanthorizons")) {
             event.enqueueWork(ShaderAwareDhEventBridge::register);
         }

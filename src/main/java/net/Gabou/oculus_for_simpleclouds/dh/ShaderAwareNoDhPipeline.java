@@ -15,6 +15,7 @@ import dev.nonamecrackers2.simpleclouds.common.config.SimpleCloudsConfig;
 import dev.nonamecrackers2.simpleclouds.mixin.MixinRenderTargetAccessor;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler;
 import net.Gabou.oculus_for_simpleclouds.client.FinalCloudCompositeHandler.DepthSource;
+import net.Gabou.oculus_for_simpleclouds.client.GlStateSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -22,6 +23,7 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import nonamecrackers2.crackerslib.common.compat.CompatHelper;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
 /**
@@ -113,6 +115,8 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         ProfilerFiller p = mc.getProfiler();
         p.push("clouds");
         boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean cullEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
         int prevDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
         boolean prevDepthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -140,11 +144,11 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
         }
         p.pop();
         stack.popPose();
-        if (!depthEnabled) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        GL11.glDepthFunc(prevDepthFunc);
-        GL11.glDepthMask(prevDepthMask);
+        if (depthEnabled) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
+        if (blendEnabled) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+        if (cullEnabled) RenderSystem.enableCull(); else RenderSystem.disableCull();
+        RenderSystem.depthFunc(prevDepthFunc);
+        RenderSystem.depthMask(prevDepthMask);
         p.push("cloud_shadows");
         renderer.doCloudShadowProcessing(stack, partialTick, projMat, camX, camY, camZ, cloudTarget.getDepthTextureId());
         p.pop();
@@ -171,31 +175,30 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
             warnedStormFogSkipped = true;
         }
 
-        mc.getMainRenderTarget().bindWrite(false);
-        int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-        try {
-            GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
-            RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
-
-            stack.pushPose();
-            stack.translate(-camX, -camY, -camZ);
-            renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
-            stack.popPose();
-
-            if (DEBUG_BLIT_CLOUD_TARGET) {
-                debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
+        if (renderer.getWorldEffectsManager().hasLightningToRender()) {
+            try (GlStateSnapshot state = GlStateSnapshot.capture(0)) {
                 mc.getMainRenderTarget().bindWrite(false);
-                cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
-                GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, ((MixinRenderTargetAccessor) cloudTarget).simpleclouds$getFrameBufferId());
-                GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
-                GL30.glBlitFramebuffer(0, 0, cloudTarget.width, cloudTarget.height, 0, 0, mc.getWindow().getWidth(), mc.getWindow().getHeight(), GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mc.getMainRenderTarget().frameBufferId);
+                int previousMainDepthType = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+                int previousMainDepthName = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
+                try {
+                    GlStateManager._glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_TEXTURE_2D, cloudTarget.getDepthTextureId(), 0);
+                    RenderSystem.setProjectionMatrix(projMat, VertexSorting.DISTANCE_TO_ORIGIN);
+                    stack.pushPose();
+                    stack.translate(-camX, -camY, -camZ);
+                    renderLightning(renderer.getWorldEffectsManager(), renderer, mc, stack, partialTick, camX, camY, camZ);
+                    stack.popPose();
+                } finally {
+                    RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
+                    mc.getMainRenderTarget().bindWrite(false);
+                    restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
+                }
             }
-        } finally {
-            RenderSystem.setProjectionMatrix(oldMcProjMat, VertexSorting.DISTANCE_TO_ORIGIN);
+        }
+
+        if (DEBUG_BLIT_CLOUD_TARGET) {
+            debug("DEBUG_BLIT_CLOUD_TARGET active; blitting cloud target to screen");
             mc.getMainRenderTarget().bindWrite(false);
-            restoreDepthAttachment(previousMainDepthType, previousMainDepthName);
+            cloudTarget.blitToScreen(mc.getWindow().getWidth(), mc.getWindow().getHeight(), false);
         }
     }
 
@@ -231,10 +234,16 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
 
     private static void renderLightning(WorldEffects effects, SimpleCloudsRenderer renderer, Minecraft mc, PoseStack stack, float partialTick, double camX, double camY, double camZ) {
         Tesselator tesselator = Tesselator.getInstance();
-        RenderSystem.enableBlend();
-        RenderSystem.enableDepthTest();
-        if (effects.hasLightningToRender()) {
-            float cachedFogStart = RenderSystem.getShaderFogStart();
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        int blendSrcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB);
+        int blendDstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB);
+        int blendSrcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA);
+        int blendDstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA);
+        float cachedFogStart = RenderSystem.getShaderFogStart();
+        try {
+            RenderSystem.enableBlend();
+            RenderSystem.enableDepthTest();
             RenderSystem.setShaderFogStart(Float.MAX_VALUE);
             BufferBuilder builder = tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
             RenderSystem.setShader(GameRenderer::getRendertypeLightningShader);
@@ -250,10 +259,12 @@ public class ShaderAwareNoDhPipeline implements CloudsRenderPipeline, ShaderAwar
             if (meshData != null) {
                 BufferUploader.drawWithShader(meshData);
             }
+        } finally {
             RenderSystem.setShaderFogStart(cachedFogStart);
-            RenderSystem.defaultBlendFunc();
+            RenderSystem.blendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha);
+            if (blendEnabled) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+            if (depthEnabled) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
         }
-        RenderSystem.disableBlend();
     }
 
     private static void restoreDepthAttachment(int attachmentType, int attachmentName) {
